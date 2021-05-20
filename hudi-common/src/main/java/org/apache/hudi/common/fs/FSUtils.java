@@ -93,6 +93,10 @@ public class FSUtils {
   public static FileSystem getFs(String path, Configuration conf) {
     FileSystem fs;
     prepareHadoopConf(conf);
+    conf.addResource(new org.apache.hadoop.fs.Path(new File("/data/app/saber-engine/hadoop-state/core-site.xml").getAbsolutePath()));
+    conf.addResource(new org.apache.hadoop.fs.Path(new File("/data/app/saber-engine/hadoop-state/hdfs-site.xml").getAbsolutePath()));
+    conf.addResource(new org.apache.hadoop.fs.Path(new File("/data/app/saber-engine/hadoop-state/mount-table.xml").getAbsolutePath()));
+    conf.set("fs.hdfs.impl", "org.apache.hadoop.hdfs.DistributedFileSystem");
     try {
       fs = new Path(path).getFileSystem(conf);
     } catch (IOException e) {

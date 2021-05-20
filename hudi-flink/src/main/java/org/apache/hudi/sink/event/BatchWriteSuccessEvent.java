@@ -46,6 +46,11 @@ public class BatchWriteSuccessEvent implements OperatorEvent {
   private final boolean isEndInput;
 
   /**
+   * Flag saying whether the event comes from restore
+   */
+  private final boolean isRestore;
+
+  /**
    * Creates an event.
    *
    * @param taskID        The task ID
@@ -61,12 +66,14 @@ public class BatchWriteSuccessEvent implements OperatorEvent {
       String instantTime,
       List<WriteStatus> writeStatuses,
       boolean isLastBatch,
-      boolean isEndInput) {
+      boolean isEndInput,
+      boolean isRestore) {
     this.taskID = taskID;
     this.instantTime = instantTime;
     this.writeStatuses = new ArrayList<>(writeStatuses);
     this.isLastBatch = isLastBatch;
     this.isEndInput = isEndInput;
+    this.isRestore = isRestore;
   }
 
   /**
@@ -94,6 +101,10 @@ public class BatchWriteSuccessEvent implements OperatorEvent {
 
   public boolean isEndInput() {
     return isEndInput;
+  }
+
+  public boolean isRestore() {
+    return isRestore;
   }
 
   /**
@@ -130,12 +141,13 @@ public class BatchWriteSuccessEvent implements OperatorEvent {
     private String instantTime;
     private boolean isLastBatch = false;
     private boolean isEndInput = false;
+    private boolean isRestore = false;
 
     public BatchWriteSuccessEvent build() {
       Objects.requireNonNull(taskID);
       Objects.requireNonNull(instantTime);
       Objects.requireNonNull(writeStatus);
-      return new BatchWriteSuccessEvent(taskID, instantTime, writeStatus, isLastBatch, isEndInput);
+      return new BatchWriteSuccessEvent(taskID, instantTime, writeStatus, isLastBatch, isEndInput, isRestore);
     }
 
     public Builder taskID(int taskID) {
@@ -160,6 +172,11 @@ public class BatchWriteSuccessEvent implements OperatorEvent {
 
     public Builder isEndInput(boolean isEndInput) {
       this.isEndInput = isEndInput;
+      return this;
+    }
+
+    public Builder isRestore(boolean isRestore) {
+      this.isRestore = isRestore;
       return this;
     }
   }

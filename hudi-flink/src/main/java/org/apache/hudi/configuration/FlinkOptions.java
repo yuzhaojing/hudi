@@ -195,6 +195,12 @@ public class FlinkOptions {
           + "key value, we will pick the one with the largest value for the precombine field,\n"
           + "determined by Object.compareTo(..)");
 
+  public static final ConfigOption<Boolean> IGNORE_SMALL_FILES = ConfigOptions
+      .key("write.ignore.small.files")
+      .booleanType()
+      .defaultValue(false)
+      .withDescription("Flag to ignore the small files in BucketAssignFunction.");
+
   public static final ConfigOption<String> PAYLOAD_CLASS = ConfigOptions
       .key("write.payload.class")
       .stringType()
@@ -490,6 +496,7 @@ public class FlinkOptions {
     // copy_on_write works same as COPY_ON_WRITE
     conf.setString(FlinkOptions.TABLE_TYPE, config.tableType.toUpperCase());
     conf.setString(FlinkOptions.OPERATION, config.operation.value());
+    conf.setBoolean(FlinkOptions.IGNORE_SMALL_FILES, config.ignoreSmallFiles);
     conf.setString(FlinkOptions.PRECOMBINE_FIELD, config.sourceOrderingField);
     conf.setString(FlinkOptions.PAYLOAD_CLASS, config.payloadClassName);
     conf.setBoolean(FlinkOptions.INSERT_DROP_DUPS, config.filterDupes);
