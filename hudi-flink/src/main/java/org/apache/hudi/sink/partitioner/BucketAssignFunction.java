@@ -34,6 +34,7 @@ import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.configuration.FlinkOptions;
 import org.apache.hudi.exception.HoodieException;
 import org.apache.hudi.index.HoodieIndexUtils;
+import org.apache.hudi.sink.index.HoodieIndexMessage;
 import org.apache.hudi.sink.utils.PayloadCreation;
 import org.apache.hudi.table.HoodieTable;
 import org.apache.hudi.table.action.commit.BucketInfo;
@@ -106,13 +107,6 @@ public class BucketAssignFunction<K, I, O extends HoodieRecord<?>>
 
   private final boolean isChangingRecords;
 
-  private final boolean bootstrapIndex;
-
-  /**
-   * State to book-keep which partition is loaded into the index state {@code indexState}.
-   */
-  private MapState<String, Integer> partitionLoadState;
-
   /**
    * Used to create DELETE payload.
    */
@@ -128,7 +122,6 @@ public class BucketAssignFunction<K, I, O extends HoodieRecord<?>>
     this.conf = conf;
     this.isChangingRecords = WriteOperationType.isChangingRecords(
         WriteOperationType.fromValue(conf.getString(FlinkOptions.OPERATION)));
-    this.bootstrapIndex = conf.getBoolean(FlinkOptions.INDEX_BOOTSTRAP_ENABLED);
     this.globalIndex = conf.getBoolean(FlinkOptions.INDEX_GLOBAL_ENABLED);
   }
 
@@ -167,11 +160,6 @@ public class BucketAssignFunction<K, I, O extends HoodieRecord<?>>
       indexStateDesc.enableTimeToLive(StateTtlConfigUtil.createTtlConfig((long) ttl));
     }
     indexState = context.getKeyedStateStore().getMapState(indexStateDesc);
-    if (bootstrapIndex) {
-      MapStateDescriptor<String, Integer> partitionLoadStateDesc =
-          new MapStateDescriptor<>("partitionLoadState", Types.STRING, Types.INT);
-      partitionLoadState = context.getKeyedStateStore().getMapState(partitionLoadStateDesc);
-    }
   }
 
   @SuppressWarnings("unchecked")
@@ -180,18 +168,21 @@ public class BucketAssignFunction<K, I, O extends HoodieRecord<?>>
     // 1. put the record into the BucketAssigner;
     // 2. look up the state for location, if the record has a location, just send it out;
     // 3. if it is an INSERT, decide the location using the BucketAssigner then send it out.
+
+    if (value instanceof HoodieIndexMessage) {
+      HoodieIndexMessage hoodieIndexMessage = (HoodieIndexMessage) value;
+      if (hoodieIndexMessage.isIndex()) {
+        indexState.put(hoodieIndexMessage.getRecordKey(), hoodieIndexMessage.getIndex());
+        return;
+      }
+    }
+
     HoodieRecord<?> record = (HoodieRecord<?>) value;
     final HoodieKey hoodieKey = record.getKey();
     final String recordKey = hoodieKey.getRecordKey();
     final String partitionPath = hoodieKey.getPartitionPath();
     final HoodieRecordLocation location;
 
-    // The dataset may be huge, thus the processing would block for long,
-    // disabled by default.
-    if (bootstrapIndex && !partitionLoadState.contains(partitionPath)) {
-      // If the partition records are never loaded, load the records first.
-      loadRecords(partitionPath);
-    }
     // Only changing records need looking up the index for the location,
     // append only records are always recognized as INSERT.
     if (isChangingRecords && indexState.contains(recordKey)) {
@@ -297,7 +288,7 @@ public class BucketAssignFunction<K, I, O extends HoodieRecord<?>>
       });
     }
     // Mark the partition path as loaded.
-    partitionLoadState.put(partitionPath, 0);
+//    partitionLoadState.put(partitionPath, 0);
     LOG.info("Finish loading records under partition {} into the index state", partitionPath);
   }
 

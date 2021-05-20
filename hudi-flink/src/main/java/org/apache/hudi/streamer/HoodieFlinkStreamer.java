@@ -18,10 +18,15 @@
 
 package org.apache.hudi.streamer;
 
+import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.streaming.api.datastream.SingleOutputStreamOperator;
+import org.apache.flink.streaming.api.operators.ProcessOperator;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.configuration.FlinkOptions;
 import org.apache.hudi.sink.CleanFunction;
 import org.apache.hudi.sink.StreamWriteOperatorFactory;
+import org.apache.hudi.sink.index.HoodieIndexMessage;
+import org.apache.hudi.sink.index.IndexBootstrapFunction;
 import org.apache.hudi.sink.partitioner.BucketAssignFunction;
 import org.apache.hudi.sink.transform.RowDataToHoodieFunction;
 import org.apache.hudi.util.AvroSchemaConverter;
@@ -76,7 +81,7 @@ public class HoodieFlinkStreamer {
     StreamWriteOperatorFactory<HoodieRecord> operatorFactory =
         new StreamWriteOperatorFactory<>(conf);
 
-    env.addSource(new FlinkKafkaConsumer<>(
+    DataStream<HoodieRecord> pipeline = env.addSource(new FlinkKafkaConsumer<>(
         cfg.kafkaTopic,
         new JsonRowDataDeserializationSchema(
             rowType,
@@ -87,23 +92,49 @@ public class HoodieFlinkStreamer {
         ), kafkaProps))
         .name("kafka_source")
         .uid("uid_kafka_source")
-        .map(new RowDataToHoodieFunction<>(rowType, conf), TypeInformation.of(HoodieRecord.class))
-        // Key-by partition path, to avoid multiple subtasks write to a partition at the same time
-        .keyBy(HoodieRecord::getPartitionPath)
-        .transform(
-            "bucket_assigner",
-            TypeInformation.of(HoodieRecord.class),
-            new KeyedProcessOperator<>(new BucketAssignFunction<>(conf)))
-        .uid("uid_bucket_assigner")
-        // shuffle by fileId(bucket id)
-        .keyBy(record -> record.getCurrentLocation().getFileId())
-        .transform("hoodie_stream_write", null, operatorFactory)
-        .uid("uid_hoodie_stream_write")
-        .setParallelism(numWriteTask)
-        .addSink(new CleanFunction<>(conf))
-        .setParallelism(1)
-        .name("clean_commits")
-        .uid("uid_clean_commits");
+        .map(new RowDataToHoodieFunction<>(rowType, conf), TypeInformation.of(HoodieRecord.class));
+
+    if (conf.getBoolean(FlinkOptions.INDEX_BOOTSTRAP_ENABLED)) {
+      pipeline
+          .transform(
+              "index_scan",
+              TypeInformation.of(HoodieIndexMessage.class),
+              new ProcessOperator<>(new IndexBootstrapFunction<>(conf)))
+          .uid("uid_bucket_assigner")
+          // Key-by partition path, to avoid multiple subtasks write to a partition at the same time
+          .keyBy(HoodieIndexMessage::getRecordKey)
+          .transform(
+              "bucket_assigner",
+              TypeInformation.of(HoodieRecord.class),
+              new KeyedProcessOperator<>(new BucketAssignFunction<>(conf)))
+          .uid("uid_bucket_assigner")
+          // shuffle by fileId(bucket id)
+          .keyBy(record -> record.getCurrentLocation().getFileId())
+          .transform("hoodie_stream_write", null, operatorFactory)
+          .uid("uid_hoodie_stream_write")
+          .setParallelism(numWriteTask)
+          .addSink(new CleanFunction<>(conf))
+          .setParallelism(1)
+          .name("clean_commits")
+          .uid("uid_clean_commits");
+    } else {
+      pipeline
+          .keyBy(HoodieRecord::getPartitionPath)
+          .transform(
+              "bucket_assigner",
+              TypeInformation.of(HoodieRecord.class),
+              new KeyedProcessOperator<>(new BucketAssignFunction<>(conf)))
+          .uid("uid_bucket_assigner")
+          // shuffle by fileId(bucket id)
+          .keyBy(record -> record.getCurrentLocation().getFileId())
+          .transform("hoodie_stream_write", null, operatorFactory)
+          .uid("uid_hoodie_stream_write")
+          .setParallelism(numWriteTask)
+          .addSink(new CleanFunction<>(conf))
+          .setParallelism(1)
+          .name("clean_commits")
+          .uid("uid_clean_commits");
+    }
 
     env.execute(cfg.targetTableName);
   }

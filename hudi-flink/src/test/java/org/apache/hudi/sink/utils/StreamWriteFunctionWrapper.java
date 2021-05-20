@@ -18,6 +18,7 @@
 
 package org.apache.hudi.sink.utils;
 
+import org.apache.commons.compress.utils.Lists;
 import org.apache.hudi.client.HoodieFlinkWriteClient;
 import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieRecord;
@@ -26,6 +27,8 @@ import org.apache.hudi.exception.HoodieException;
 import org.apache.hudi.sink.StreamWriteFunction;
 import org.apache.hudi.sink.StreamWriteOperatorCoordinator;
 import org.apache.hudi.sink.event.BatchWriteSuccessEvent;
+import org.apache.hudi.sink.index.HoodieIndexMessage;
+import org.apache.hudi.sink.index.IndexBootstrapFunction;
 import org.apache.hudi.sink.partitioner.BucketAssignFunction;
 import org.apache.hudi.sink.transform.RowDataToHoodieFunction;
 import org.apache.hudi.utils.TestConfigurations;
@@ -44,6 +47,7 @@ import org.apache.flink.streaming.api.operators.collect.utils.MockOperatorEventG
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.util.Collector;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -65,8 +69,10 @@ public class StreamWriteFunctionWrapper<I> {
 
   /** Function that converts row data to HoodieRecord. */
   private RowDataToHoodieFunction<RowData, HoodieRecord<?>> toHoodieFunction;
+  /** Function that load index in state. */
+  private IndexBootstrapFunction<HoodieRecord<?>, Object> indexBootstrapFunction;
   /** Function that assigns bucket ID. */
-  private BucketAssignFunction<String, HoodieRecord<?>, HoodieRecord<?>> bucketAssignerFunction;
+  private BucketAssignFunction<String, Object, HoodieRecord<?>> bucketAssignerFunction;
   /** Stream write function. */
   private StreamWriteFunction<Object, HoodieRecord<?>, Object> writeFunction;
 
@@ -100,6 +106,10 @@ public class StreamWriteFunctionWrapper<I> {
     toHoodieFunction.setRuntimeContext(runtimeContext);
     toHoodieFunction.open(conf);
 
+    indexBootstrapFunction = new IndexBootstrapFunction<>(conf);
+    indexBootstrapFunction.setRuntimeContext(runtimeContext);
+    indexBootstrapFunction.open(conf);
+
     bucketAssignerFunction = new BucketAssignFunction<>(conf);
     bucketAssignerFunction.setRuntimeContext(runtimeContext);
     bucketAssignerFunction.open(conf);
@@ -118,6 +128,22 @@ public class StreamWriteFunctionWrapper<I> {
   public void invoke(I record) throws Exception {
     HoodieRecord<?> hoodieRecord = toHoodieFunction.map((RowData) record);
     HoodieRecord<?>[] hoodieRecords = new HoodieRecord[1];
+    List<HoodieIndexMessage> hoodieIndexMessages = Lists.newArrayList();
+
+    Collector<Object> indexCollector = new Collector<Object>() {
+      @Override
+      public void collect(Object record) {
+        if (record instanceof HoodieIndexMessage) {
+          hoodieIndexMessages.add((HoodieIndexMessage) record);
+        }
+      }
+
+      @Override
+      public void close() {
+
+      }
+    };
+
     Collector<HoodieRecord<?>> collector = new Collector<HoodieRecord<?>>() {
       @Override
       public void collect(HoodieRecord<?> record) {
@@ -129,6 +155,11 @@ public class StreamWriteFunctionWrapper<I> {
 
       }
     };
+    indexBootstrapFunction.processElement(hoodieRecord, null, indexCollector);
+    for (HoodieIndexMessage hoodieIndexMessage : hoodieIndexMessages) {
+      bucketAssignerFunction.processElement(hoodieIndexMessage, null, collector);
+    }
+
     bucketAssignerFunction.processElement(hoodieRecord, null, collector);
     writeFunction.processElement(hoodieRecords[0], null, null);
   }
