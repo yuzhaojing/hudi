@@ -18,6 +18,19 @@
 
 package org.apache.hudi.sink;
 
+import com.google.common.collect.Lists;
+import org.apache.flink.api.common.state.ListState;
+import org.apache.flink.api.common.state.ListStateDescriptor;
+import org.apache.flink.api.common.typeinfo.BasicTypeInfo;
+import org.apache.flink.api.common.typeinfo.PrimitiveArrayTypeInfo;
+import org.apache.flink.api.common.typeinfo.TypeHint;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.java.typeutils.ListTypeInfo;
+import org.apache.flink.api.java.typeutils.MapTypeInfo;
+import org.apache.flink.runtime.operators.coordination.OperatorEvent;
+import org.apache.flink.runtime.operators.coordination.OperatorEventHandler;
+import org.apache.flink.table.runtime.typeutils.SortedMapTypeInfo;
+import org.apache.flink.util.TimeUtils;
 import org.apache.hudi.client.HoodieFlinkWriteClient;
 import org.apache.hudi.client.WriteStatus;
 import org.apache.hudi.common.model.HoodieKey;
@@ -26,12 +39,16 @@ import org.apache.hudi.common.model.HoodieRecordLocation;
 import org.apache.hudi.common.model.HoodieRecordPayload;
 import org.apache.hudi.common.model.HoodieTableType;
 import org.apache.hudi.common.model.WriteOperationType;
+import org.apache.hudi.common.table.timeline.HoodieActiveTimeline;
+import org.apache.hudi.common.table.timeline.HoodieTimeline;
 import org.apache.hudi.common.util.CommitUtils;
 import org.apache.hudi.common.util.ObjectSizeCalculator;
 import org.apache.hudi.common.util.ValidationUtils;
 import org.apache.hudi.configuration.FlinkOptions;
+import org.apache.hudi.exception.HoodieException;
 import org.apache.hudi.index.HoodieIndex;
 import org.apache.hudi.sink.event.BatchWriteSuccessEvent;
+import org.apache.hudi.sink.event.InitWriterEvent;
 import org.apache.hudi.table.action.commit.FlinkWriteHelper;
 import org.apache.hudi.util.StreamerUtil;
 
@@ -48,13 +65,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BiFunction;
 import java.util.stream.Collectors;
 
@@ -145,6 +157,12 @@ public class StreamWriteFunction<K, I, O>
    */
   private transient TotalSizeTracer tracer;
 
+  private transient ListState<WriteStatus> writeStatusState;
+
+  private final List<WriteStatus> writeStatusOfCurrentCkpt = Lists.newArrayList();
+
+  private transient boolean canFlush = true;
+
   /**
    * Constructs a StreamingSinkFunction.
    *
@@ -156,27 +174,58 @@ public class StreamWriteFunction<K, I, O>
 
   @Override
   public void open(Configuration parameters) throws IOException {
-    this.taskID = getRuntimeContext().getIndexOfThisSubtask();
-    this.writeClient = StreamerUtil.createWriteClient(this.config, getRuntimeContext());
-    this.actionType = CommitUtils.getCommitActionType(
-        WriteOperationType.fromValue(config.getString(FlinkOptions.OPERATION)),
-        HoodieTableType.valueOf(config.getString(FlinkOptions.TABLE_TYPE)));
     this.tracer = new TotalSizeTracer(this.config);
     initBuffer();
     initWriteFunction();
   }
 
   @Override
-  public void initializeState(FunctionInitializationContext context) {
-    // no operation
+  public void initializeState(FunctionInitializationContext context) throws Exception {
+    this.taskID = getRuntimeContext().getIndexOfThisSubtask();
+    this.writeClient = StreamerUtil.createWriteClient(this.config, getRuntimeContext());
+    this.actionType = CommitUtils.getCommitActionType(
+            WriteOperationType.fromValue(config.getString(FlinkOptions.OPERATION)),
+            HoodieTableType.valueOf(config.getString(FlinkOptions.TABLE_TYPE)));
+
+    this.writeStatusState = context.getOperatorStateStore().getListState(
+        new ListStateDescriptor<>(
+            "hudi-write-status-state",
+            TypeInformation.of(new TypeHint<WriteStatus>() {})
+    ));
+
+    final List<WriteStatus> writeStatuses = new ArrayList<>();
+
+    if (context.isRestored()) {
+      for (WriteStatus writeStatus : this.writeStatusState.get()) {
+        writeStatuses.add(writeStatus);
+      }
+
+      // disable flush, until received event from coordinator
+      this.canFlush = false;
+    }
+
+    final InitWriterEvent event = InitWriterEvent.builder()
+            .taskID(taskID)
+            .writeStatus(writeStatuses)
+            .build();
+    this.eventGateway.sendEventToCoordinator(event);
+
+    LOG.info("Send init event to coordinator, task[{}].", taskID);
   }
 
   @Override
-  public void snapshotState(FunctionSnapshotContext functionSnapshotContext) {
+  public void snapshotState(FunctionSnapshotContext functionSnapshotContext) throws Exception {
     // Based on the fact that the coordinator starts the checkpoint first,
     // it would check the validity.
     // wait for the buffer data flush out and request a new instant
     flushRemaining(false);
+
+    // reset the snapshot state to the current state
+    this.writeStatusState.clear();
+    this.writeStatusState.addAll(writeStatusOfCurrentCkpt);
+
+    // disable flush, until received event from coordinator
+    this.canFlush = false;
   }
 
   @Override
@@ -255,6 +304,11 @@ public class StreamWriteFunction<K, I, O>
       default:
         throw new RuntimeException("Unsupported write operation : " + writeOperation);
     }
+  }
+
+  public void handleOperatorEvent(OperatorEvent evt) {
+    LOG.info("Received commit success from coordinator.");
+    this.canFlush = true;
   }
 
   /**
@@ -440,30 +494,40 @@ public class StreamWriteFunction<K, I, O>
     boolean flushBucket = bucket.detector.detect(item);
     boolean flushBuffer = this.tracer.trace(bucket.detector.lastRecordSize);
     if (flushBucket) {
-      flushBucket(bucket);
-      this.tracer.countDown(bucket.detector.totalSize);
-      bucket.reset();
+      boolean flush = flushBucket(bucket);
+      if (flush) {
+        this.tracer.countDown(bucket.detector.totalSize);
+        bucket.reset();
+      }
     } else if (flushBuffer) {
       // find the max size bucket and flush it out
       List<DataBucket> sortedBuckets = this.buckets.values().stream()
           .sorted((b1, b2) -> Long.compare(b2.detector.totalSize, b1.detector.totalSize))
           .collect(Collectors.toList());
       final DataBucket bucketToFlush = sortedBuckets.get(0);
-      flushBucket(bucketToFlush);
-      this.tracer.countDown(bucketToFlush.detector.totalSize);
-      bucketToFlush.reset();
+      boolean flush = flushBucket(bucketToFlush);
+      if (flush) {
+        this.tracer.countDown(bucketToFlush.detector.totalSize);
+        bucketToFlush.reset();
+      }
     }
     bucket.records.add(item);
   }
 
   @SuppressWarnings("unchecked, rawtypes")
-  private void flushBucket(DataBucket bucket) {
+  private boolean flushBucket(DataBucket bucket) {
     final String instant = this.writeClient.getLastPendingInstant(this.actionType);
 
     if (instant == null) {
       // in case there are empty checkpoints that has no input data
-      LOG.info("No inflight instant when flushing data, cancel.");
-      return;
+      LOG.info("No inflight instant when flushing data, skip.");
+      return false;
+    }
+
+    if (!canFlush) {
+      // in case there are flush before last instant commit
+      LOG.info("Last commit has not committed, skip.");
+      return false;
     }
 
     List<HoodieRecord> records = bucket.writeBuffer();
@@ -480,17 +544,21 @@ public class StreamWriteFunction<K, I, O>
         .isLastBatch(false)
         .isEndInput(false)
         .build();
+
+    writeStatusOfCurrentCkpt.addAll(writeStatus);
     this.eventGateway.sendEventToCoordinator(event);
+
+    return true;
   }
 
   @SuppressWarnings("unchecked, rawtypes")
   private void flushRemaining(boolean isEndInput) {
     this.currentInstant = this.writeClient.getLastPendingInstant(this.actionType);
+
     if (this.currentInstant == null) {
-      // in case there are empty checkpoints that has no input data
-      LOG.info("No inflight instant when flushing data, cancel.");
-      return;
+      throw new HoodieException("No inflight instant when flushRemaining!");
     }
+
     final List<WriteStatus> writeStatus;
     if (buckets.size() > 0) {
       writeStatus = new ArrayList<>();
@@ -519,6 +587,8 @@ public class StreamWriteFunction<K, I, O>
         .isLastBatch(true)
         .isEndInput(isEndInput)
         .build();
+
+    writeStatusOfCurrentCkpt.addAll(writeStatus);
     this.eventGateway.sendEventToCoordinator(event);
     this.buckets.clear();
     this.tracer.reset();
