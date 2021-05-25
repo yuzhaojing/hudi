@@ -127,8 +127,6 @@ public class StreamWriteOperatorCoordinator
    */
   private transient TableState tableState;
 
-  private transient int count;
-
   /**
    * Constructs a StreamingSinkOperatorCoordinator.
    *
@@ -198,12 +196,6 @@ public class StreamWriteOperatorCoordinator
           // for streaming mode, commits the ever received events anyway,
           // the stream write task snapshot and flush the data buffer synchronously in sequence,
           // so a successful checkpoint subsumes the old one(follows the checkpoint subsuming contract)
-          if (count == 1) {
-            count++;
-            throw new RuntimeException("test");
-          }
-
-          count++;
           final boolean committed = commitInstant();
           if (committed) {
             // if async compaction is on, schedule the compaction
