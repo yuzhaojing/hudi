@@ -229,7 +229,7 @@ public class StreamWriteFunction<K, I, O>
   }
 
   @Override
-  public void processElement(I value, KeyedProcessFunction<K, I, O>.Context ctx, Collector<O> out) {
+  public void processElement(I value, KeyedProcessFunction<K, I, O>.Context ctx, Collector<O> out) throws Exception {
     bufferRecord((HoodieRecord<?>) value);
   }
 
@@ -485,7 +485,7 @@ public class StreamWriteFunction<K, I, O>
    *
    * @param value HoodieRecord
    */
-  private void bufferRecord(HoodieRecord<?> value) {
+  private void bufferRecord(HoodieRecord<?> value) throws Exception {
     final String bucketID = getBucketID(value);
 
     DataBucket bucket = this.buckets.computeIfAbsent(bucketID,
@@ -493,6 +493,21 @@ public class StreamWriteFunction<K, I, O>
     final DataItem item = DataItem.fromHoodieRecord(value);
     boolean flushBucket = bucket.detector.detect(item);
     boolean flushBuffer = this.tracer.trace(bucket.detector.lastRecordSize);
+
+    // if current memorySize larger than maxBufferSize and no response message received from coordinator,
+    // should blocking until the lastPendingInstant update to avoid oom.
+    while (flushBuffer && !canFlush) {
+      LOG.warn("Trigger the flushBuffer but no response message received from coordinator, blocking until the lastPendingInstant update.");
+      final String instant = this.writeClient.getLastPendingInstant(this.actionType);
+      if (instant.compareTo(this.currentInstant) > 0) {
+        this.currentInstant = instant;
+        this.canFlush = true;
+        break;
+      }
+
+      TimeUnit.SECONDS.sleep(1);
+    }
+
     if (flushBucket) {
       boolean flush = flushBucket(bucket);
       if (flush) {
@@ -516,17 +531,17 @@ public class StreamWriteFunction<K, I, O>
 
   @SuppressWarnings("unchecked, rawtypes")
   private boolean flushBucket(DataBucket bucket) {
+    if (!canFlush) {
+      // in case there are flush before last instant commit
+      LOG.info("Last commit has not committed, skip.");
+      return false;
+    }
+
     final String instant = this.writeClient.getLastPendingInstant(this.actionType);
 
     if (instant == null) {
       // in case there are empty checkpoints that has no input data
       LOG.info("No inflight instant when flushing data, skip.");
-      return false;
-    }
-
-    if (!canFlush) {
-      // in case there are flush before last instant commit
-      LOG.info("Last commit has not committed, skip.");
       return false;
     }
 
