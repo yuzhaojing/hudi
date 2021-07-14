@@ -126,15 +126,12 @@ public class FlinkStreamerConfig extends Configuration {
   @Parameter(names = {"--help", "-h"}, help = true)
   public Boolean help = false;
 
-<<<<<<< HEAD
-=======
   @Parameter(names = {"--index-bootstrap-num"}, description = "Parallelism of tasks that do bucket assign, default is 4.")
   public Integer indexBootstrapNum = 4;
 
   @Parameter(names = {"--bucket-assign-num"}, description = "Parallelism of tasks that do bucket assign, default is 4.")
   public Integer bucketAssignNum = 4;
 
->>>>>>> aff1a1ed2 ([HUDI-2171] Add parallelism conf for bootstrap operator)
   @Parameter(names = {"--write-task-num"}, description = "Parallelism of tasks that do actual write, default is 4.")
   public Integer writeTaskNum = 4;
 
