@@ -419,7 +419,11 @@ public class StreamWriteOperatorCoordinator
     if (!min.isPresent()) {
       return true;
     }
-    commitToHms(writeResults, min.get().getWatermark());
+
+    if (conf.getBoolean(FlinkOptions.HIVE_SYNC_ENABLED)) {
+      commitToHms(writeResults, min.get().getWatermark());
+    }
+
     return true;
   }
 

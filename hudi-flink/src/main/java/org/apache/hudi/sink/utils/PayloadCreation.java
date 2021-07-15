@@ -27,6 +27,7 @@ import org.apache.hudi.common.util.ReflectionUtils;
 import org.apache.hudi.common.util.ValidationUtils;
 import org.apache.hudi.configuration.FlinkOptions;
 
+import org.apache.avro.generic.GenericData;
 import org.apache.avro.generic.GenericRecord;
 import org.apache.flink.configuration.Configuration;
 
@@ -76,8 +77,15 @@ public class PayloadCreation implements Serializable {
       ValidationUtils.checkState(preCombineField != null);
       Comparable<?> orderingVal = (Comparable<?>) HoodieAvroUtils.getNestedFieldVal(record,
           preCombineField, false);
+
+      if (isDelete) {
+        GenericRecord deleteRecord = new GenericData.Record(record.getSchema());
+        deleteRecord.put(preCombineField, orderingVal);
+        record = deleteRecord;
+      }
+
       return (HoodieRecordPayload<?>) constructor.newInstance(
-          isDelete ? null : record, orderingVal);
+          record, orderingVal);
     } else {
       return (HoodieRecordPayload<?>) this.constructor.newInstance(Option.of(record));
     }

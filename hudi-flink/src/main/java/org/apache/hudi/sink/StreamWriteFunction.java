@@ -235,7 +235,7 @@ public class StreamWriteFunction<I, O>
     bufferRecord((HoodieRecord<?>) value);
   }
 
-  public void processWatermark(Watermark mark) throws Exception {
+  public void processWatermark(Watermark mark) {
     watermark = mark;
   }
 
