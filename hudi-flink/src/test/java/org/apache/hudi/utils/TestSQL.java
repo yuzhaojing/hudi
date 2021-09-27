@@ -44,4 +44,10 @@ public class TestSQL {
       + "('id9','Jane',19,TIMESTAMP '1970-01-01 00:00:06','par3'),\n"
       + "('id10','Ella',38,TIMESTAMP '1970-01-01 00:00:07','par4'),\n"
       + "('id11','Phoebe',52,TIMESTAMP '1970-01-01 00:00:08','par4')";
+
+  public static final String INSERT_T1_PARTIAL = "insert into t1 values\n"
+      + "('id1','',13,TIMESTAMP '1970-01-01 00:00:01','par1'),\n"
+      + "('id1','Danny',0,TIMESTAMP '1970-01-01 00:00:02','par1'),\n"
+      + "('id1','Danny1',0,TIMESTAMP '1970-01-01 00:00:03','par1'),\n"
+      + "('id1','Danny',23,TIMESTAMP '1970-01-01 00:00:04','par1')";
 }

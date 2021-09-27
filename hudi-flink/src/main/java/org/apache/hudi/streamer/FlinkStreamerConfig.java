@@ -19,7 +19,9 @@
 package org.apache.hudi.streamer;
 
 import org.apache.hudi.client.utils.OperationConverter;
+import org.apache.hudi.common.model.OverwriteNonDefaultsWithLatestAvroPayload;
 import org.apache.hudi.common.model.OverwriteWithLatestAvroPayload;
+import org.apache.hudi.common.model.PartialUpdateAvroPayload;
 import org.apache.hudi.common.model.WriteOperationType;
 import org.apache.hudi.common.util.StringUtils;
 import org.apache.hudi.configuration.FlinkOptions;
@@ -155,6 +157,10 @@ public class FlinkStreamerConfig extends Configuration {
   @Parameter(names = {"--index-global-enabled"}, description = "Whether to update index for the old partition path "
       + "if same key record with different partition path came in, default false")
   public Boolean indexGlobalEnabled = false;
+
+  @Parameter(names = {"--partial-update-enabled"}, description = "Whether to update index for the old partition path "
+      + "if same key record with different partition path came in, default false")
+  public Boolean partialUpdateEnabled = false;
 
   @Parameter(names = {"--index-partition-regex"},
       description = "Whether to load partitions in state if partition path matching， default *")
@@ -311,8 +317,15 @@ public class FlinkStreamerConfig extends Configuration {
     conf.setBoolean(FlinkOptions.INSERT_DEDUP, config.insertDedup);
     conf.setString(FlinkOptions.OPERATION, config.operation.value());
     conf.setString(FlinkOptions.PRECOMBINE_FIELD, config.sourceOrderingField);
-    conf.setString(FlinkOptions.PAYLOAD_CLASS_NAME, config.payloadClassName);
-    conf.setBoolean(FlinkOptions.INSERT_DROP_DUPS, config.filterDupes);
+    conf.setBoolean(FlinkOptions.PARTIAL_UPDATE_ENABLED, config.partialUpdateEnabled);
+    if (config.partialUpdateEnabled) {
+      conf.setString(FlinkOptions.PAYLOAD_CLASS_NAME, PartialUpdateAvroPayload.class.getName());
+      // disable preCombine
+      conf.setBoolean(FlinkOptions.INSERT_DROP_DUPS, false);
+    } else {
+      conf.setString(FlinkOptions.PAYLOAD_CLASS_NAME, config.payloadClassName);
+      conf.setBoolean(FlinkOptions.INSERT_DROP_DUPS, config.filterDupes);
+    }
     conf.setInteger(FlinkOptions.RETRY_TIMES, Integer.parseInt(config.instantRetryTimes));
     conf.setLong(FlinkOptions.RETRY_INTERVAL_MS, Long.parseLong(config.instantRetryInterval));
     conf.setBoolean(FlinkOptions.IGNORE_FAILED, config.commitOnErrors);

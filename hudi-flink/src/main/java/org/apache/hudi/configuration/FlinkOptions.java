@@ -227,6 +227,12 @@ public class FlinkOptions extends HoodieConfig {
       .defaultValue(TABLE_TYPE_COPY_ON_WRITE)
       .withDescription("Type of table to write. COPY_ON_WRITE (or) MERGE_ON_READ");
 
+  public static final ConfigOption<Boolean> PARTIAL_UPDATE_ENABLED = ConfigOptions
+      .key("partial.update.enabled")
+      .booleanType()
+      .defaultValue(false)
+      .withDescription("Whether to bootstrap the index state from existing hoodie table, default false");
+
   public static final ConfigOption<Boolean> INSERT_DEDUP = ConfigOptions
       .key("write.insert.deduplicate")
       .booleanType()

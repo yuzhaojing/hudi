@@ -23,11 +23,16 @@ import org.apache.hudi.client.common.HoodieFlinkEngineContext;
 import org.apache.hudi.common.config.SerializableConfiguration;
 import org.apache.hudi.common.model.BaseAvroPayload;
 import org.apache.hudi.common.model.HoodieKey;
+import org.apache.hudi.common.model.HoodieOperation;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieRecordGlobalLocation;
 import org.apache.hudi.common.model.HoodieRecordLocation;
+import org.apache.hudi.common.model.HoodieRecordPayload;
 import org.apache.hudi.common.model.HoodieTableType;
+import org.apache.hudi.common.model.OverwriteWithLatestAvroPayload;
+import org.apache.hudi.common.model.PartialUpdateAvroPayload;
 import org.apache.hudi.common.model.WriteOperationType;
+import org.apache.hudi.common.util.Option;
 import org.apache.hudi.config.HoodieWriteConfig;
 import org.apache.hudi.configuration.FlinkOptions;
 import org.apache.hudi.sink.bootstrap.IndexRecord;
@@ -35,13 +40,18 @@ import org.apache.hudi.sink.utils.PayloadCreation;
 import org.apache.hudi.table.action.commit.BucketInfo;
 import org.apache.hudi.util.StreamerUtil;
 
+import org.apache.avro.Schema;
+import org.apache.avro.generic.IndexedRecord;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.api.common.state.CheckpointListener;
 import org.apache.flink.api.common.state.StateTtlConfig;
 import org.apache.flink.api.common.state.ValueState;
 import org.apache.flink.api.common.state.ValueStateDescriptor;
 import org.apache.flink.api.common.time.Time;
+import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.api.java.tuple.Tuple2;
+import org.apache.flink.api.java.tuple.Tuple3;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.runtime.state.FunctionInitializationContext;
 import org.apache.flink.runtime.state.FunctionSnapshotContext;
@@ -49,6 +59,8 @@ import org.apache.flink.streaming.api.checkpoint.CheckpointedFunction;
 import org.apache.flink.streaming.api.functions.KeyedProcessFunction;
 import org.apache.flink.util.Collector;
 
+import java.io.IOException;
+import java.util.List;
 import java.util.Objects;
 
 /**
@@ -83,7 +95,7 @@ public class BucketAssignFunction<K, I, O extends HoodieRecord<?>>
    *   <li>If it does not, use the {@link BucketAssigner} to generate a new bucket ID</li>
    * </ul>
    */
-  private ValueState<HoodieRecordGlobalLocation> indexState;
+  private ValueState<Tuple2<HoodieRecordGlobalLocation, HoodieRecord<?>>> indexState;
 
   /**
    * Bucket assigner to assign new bucket IDs or reuse existing ones.
@@ -105,12 +117,23 @@ public class BucketAssignFunction<K, I, O extends HoodieRecord<?>>
    */
   private final boolean globalIndex;
 
+  /**
+   * If enable partial update, preCombine the record and store in state.
+   */
+  private final boolean partialUpdate;
+
+  /**
+   * Avro schema of the input.
+   */
+  private transient Schema avroSchema;
+
   public BucketAssignFunction(Configuration conf) {
     this.conf = conf;
     this.isChangingRecords = WriteOperationType.isChangingRecords(
         WriteOperationType.fromValue(conf.getString(FlinkOptions.OPERATION)));
     this.globalIndex = conf.getBoolean(FlinkOptions.INDEX_GLOBAL_ENABLED)
         && !conf.getBoolean(FlinkOptions.CHANGELOG_ENABLED);
+    this.partialUpdate = conf.getBoolean(FlinkOptions.PARTIAL_UPDATE_ENABLED);
   }
 
   @Override
@@ -129,6 +152,7 @@ public class BucketAssignFunction<K, I, O extends HoodieRecord<?>>
         context,
         writeConfig);
     this.payloadCreation = PayloadCreation.instance(this.conf);
+    this.avroSchema = StreamerUtil.getSourceSchema(this.conf);
   }
 
   private boolean ignoreSmallFiles(HoodieWriteConfig writeConfig) {
@@ -143,10 +167,11 @@ public class BucketAssignFunction<K, I, O extends HoodieRecord<?>>
 
   @Override
   public void initializeState(FunctionInitializationContext context) {
-    ValueStateDescriptor<HoodieRecordGlobalLocation> indexStateDesc =
+    ValueStateDescriptor<Tuple2<HoodieRecordGlobalLocation, HoodieRecord<?>>> indexStateDesc =
         new ValueStateDescriptor<>(
             "indexState",
-            TypeInformation.of(HoodieRecordGlobalLocation.class));
+            TypeInformation.of(new TypeHint<Tuple2<HoodieRecordGlobalLocation, HoodieRecord<?>>>() {
+            }));
     double ttl = conf.getDouble(FlinkOptions.INDEX_STATE_TTL) * 24 * 60 * 60 * 1000;
     if (ttl > 0) {
       indexStateDesc.enableTimeToLive(StateTtlConfig.newBuilder(Time.milliseconds((long) ttl)).build());
@@ -159,7 +184,7 @@ public class BucketAssignFunction<K, I, O extends HoodieRecord<?>>
     if (value instanceof IndexRecord) {
       IndexRecord<?> indexRecord = (IndexRecord<?>) value;
       this.context.setCurrentKey(indexRecord.getRecordKey());
-      this.indexState.update((HoodieRecordGlobalLocation) indexRecord.getCurrentLocation());
+      this.indexState.update(Tuple2.of((HoodieRecordGlobalLocation) indexRecord.getCurrentLocation(), null));
     } else {
       processRecord((HoodieRecord<?>) value, out);
     }
@@ -177,8 +202,14 @@ public class BucketAssignFunction<K, I, O extends HoodieRecord<?>>
 
     // Only changing records need looking up the index for the location,
     // append only records are always recognized as INSERT.
-    HoodieRecordGlobalLocation oldLoc = indexState.value();
-    if (isChangingRecords && oldLoc != null) {
+    Tuple2<HoodieRecordGlobalLocation, HoodieRecord<?>> value = indexState.value();
+
+    HoodieRecordGlobalLocation oldLoc;
+    HoodieRecord<?> oldHoodieRecord = null;
+
+    if (isChangingRecords && value != null) {
+      oldLoc = value.f0;
+      oldHoodieRecord = value.f1;
       // Set up the instant time as "U" to mark the bucket as an update bucket.
       if (!Objects.equals(oldLoc.getPartitionPath(), partitionPath)) {
         if (globalIndex) {
@@ -191,7 +222,6 @@ public class BucketAssignFunction<K, I, O extends HoodieRecord<?>>
           out.collect((O) deleteRecord);
         }
         location = getNewRecordLocation(partitionPath);
-        updateIndexState(partitionPath, location);
       } else {
         location = oldLoc.toLocal("U");
         this.bucketAssigner.addUpdate(partitionPath, location.getFileId());
@@ -202,10 +232,32 @@ public class BucketAssignFunction<K, I, O extends HoodieRecord<?>>
     }
     // always refresh the index
     if (isChangingRecords) {
-      updateIndexState(partitionPath, location);
+      if (partialUpdate) {
+        record = updateRecord(record, oldHoodieRecord);
+        updateIndexState(partitionPath, location, record);
+      } else {
+        updateIndexState(partitionPath, location, null);
+      }
     }
     record.setCurrentLocation(location);
     out.collect((O) record);
+  }
+
+  private HoodieRecord<?> updateRecord(HoodieRecord<?> currentHoodieRecord, HoodieRecord<?> oldHoodieRecord) throws IOException {
+    if (oldHoodieRecord == null) {
+      return currentHoodieRecord;
+    }
+
+    final PartialUpdateAvroPayload oldHoodieRecordData = (PartialUpdateAvroPayload) oldHoodieRecord.getData();
+    final PartialUpdateAvroPayload currentHoodieRecordData = (PartialUpdateAvroPayload) currentHoodieRecord.getData();
+    final HoodieRecordPayload reducedData = currentHoodieRecordData.preCombine(oldHoodieRecordData, avroSchema, null);
+    // we cannot allow the user to change the key or partitionPath, since that will affect
+    // everything
+    // so pick it from one of the records.
+    boolean choosePrev = oldHoodieRecordData.orderingVal.compareTo(currentHoodieRecordData.orderingVal) > 0;
+    HoodieKey reducedKey = choosePrev ? oldHoodieRecord.getKey() : currentHoodieRecord.getKey();
+    HoodieOperation operation = choosePrev ? oldHoodieRecord.getOperation() : currentHoodieRecord.getOperation();
+    return new HoodieRecord<>(reducedKey, reducedData, operation);
   }
 
   private HoodieRecordLocation getNewRecordLocation(String partitionPath) {
@@ -229,8 +281,9 @@ public class BucketAssignFunction<K, I, O extends HoodieRecord<?>>
 
   private void updateIndexState(
       String partitionPath,
-      HoodieRecordLocation localLoc) throws Exception {
-    this.indexState.update(HoodieRecordGlobalLocation.fromLocal(partitionPath, localLoc));
+      HoodieRecordLocation localLoc,
+      HoodieRecord<?> record) throws Exception {
+    this.indexState.update(Tuple2.of(HoodieRecordGlobalLocation.fromLocal(partitionPath, localLoc), record));
   }
 
   @Override

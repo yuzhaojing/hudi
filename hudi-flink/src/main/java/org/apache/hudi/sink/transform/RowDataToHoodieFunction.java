@@ -22,6 +22,7 @@ import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieOperation;
 import org.apache.hudi.common.model.HoodieRecord;
 import org.apache.hudi.common.model.HoodieRecordPayload;
+import org.apache.hudi.common.model.PartialUpdateAvroPayload;
 import org.apache.hudi.configuration.FlinkOptions;
 import org.apache.hudi.keygen.KeyGenerator;
 import org.apache.hudi.keygen.factory.HoodieAvroKeyGeneratorFactory;
@@ -71,6 +72,11 @@ public class RowDataToHoodieFunction<I extends RowData, O extends HoodieRecord>
   private transient PayloadCreation payloadCreation;
 
   /**
+   * Partial update enable.
+   */
+  private transient Boolean partialUpdateEnable;
+
+  /**
    * Config options.
    */
   private final Configuration config;
@@ -89,6 +95,7 @@ public class RowDataToHoodieFunction<I extends RowData, O extends HoodieRecord>
         HoodieAvroKeyGeneratorFactory
             .createKeyGenerator(flinkConf2TypedProperties(FlinkOptions.flatOptions(this.config)));
     this.payloadCreation = PayloadCreation.instance(config);
+    this.partialUpdateEnable = this.config.getBoolean(FlinkOptions.PARTIAL_UPDATE_ENABLED);
   }
 
   @SuppressWarnings("unchecked")
