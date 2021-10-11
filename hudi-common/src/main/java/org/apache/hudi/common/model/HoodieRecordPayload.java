@@ -59,6 +59,20 @@ public interface HoodieRecordPayload<T extends HoodieRecordPayload> extends Seri
   }
 
   /**
+   * When more than one HoodieRecord have the same HoodieKey, this function combines them before attempting to insert/upsert by taking in a property map.
+   * Implementation can leverage the property to decide their business logic to do preCombine.
+   *
+   * @param oldValue   instance of the old {@link HoodieRecordPayload} to be combined with.
+   * @param properties Payload related properties. For example pass the ordering field(s) name to extract from value in storage.
+   *
+   * @return the combined value
+   */
+  @PublicAPIMethod(maturity = ApiMaturityLevel.STABLE)
+  default T preCombine(T oldValue, Schema schema, Properties properties) {
+    return preCombine(oldValue);
+  }
+
+  /**
    * This methods is deprecated. Please refer to {@link #combineAndGetUpdateValue(IndexedRecord, Schema, Properties)} for java docs.
    */
   @Deprecated

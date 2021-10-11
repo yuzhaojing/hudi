@@ -35,6 +35,7 @@ import org.apache.hudi.sink.event.WriteMetadataEvent;
 import org.apache.hudi.table.action.commit.FlinkWriteHelper;
 import org.apache.hudi.util.StreamerUtil;
 
+import org.apache.avro.Schema;
 import org.apache.flink.annotation.VisibleForTesting;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.functions.ProcessFunction;
@@ -107,6 +108,11 @@ public class StreamWriteFunction<I> extends AbstractStreamWriteFunction<I> {
   private transient TotalSizeTracer tracer;
 
   /**
+   * Avro schema of the input.
+   */
+  private transient Schema avroSchema;
+
+  /**
    * Constructs a StreamingSinkFunction.
    *
    * @param config The config options
@@ -118,6 +124,7 @@ public class StreamWriteFunction<I> extends AbstractStreamWriteFunction<I> {
   @Override
   public void open(Configuration parameters) throws IOException {
     this.tracer = new TotalSizeTracer(this.config);
+    this.avroSchema = StreamerUtil.getSourceSchema(this.config);
     initBuffer();
     initWriteFunction();
   }
@@ -419,7 +426,7 @@ public class StreamWriteFunction<I> extends AbstractStreamWriteFunction<I> {
     List<HoodieRecord> records = bucket.writeBuffer();
     ValidationUtils.checkState(records.size() > 0, "Data bucket to flush has no buffering records");
     if (config.getBoolean(FlinkOptions.INSERT_DROP_DUPS)) {
-      records = FlinkWriteHelper.newInstance().deduplicateRecords(records, (HoodieIndex) null, -1);
+      records = FlinkWriteHelper.newInstance(avroSchema).deduplicateRecords(records, (HoodieIndex) null, -1);
     }
     bucket.preWrite(records);
     final List<WriteStatus> writeStatus = new ArrayList<>(writeFunction.apply(records, instant));
@@ -454,7 +461,7 @@ public class StreamWriteFunction<I> extends AbstractStreamWriteFunction<I> {
             List<HoodieRecord> records = bucket.writeBuffer();
             if (records.size() > 0) {
               if (config.getBoolean(FlinkOptions.INSERT_DROP_DUPS)) {
-                records = FlinkWriteHelper.newInstance().deduplicateRecords(records, (HoodieIndex) null, -1);
+                records = FlinkWriteHelper.newInstance(avroSchema).deduplicateRecords(records, (HoodieIndex) null, -1);
               }
               bucket.preWrite(records);
               writeStatus.addAll(writeFunction.apply(records, currentInstant));

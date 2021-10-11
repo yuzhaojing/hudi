@@ -30,11 +30,15 @@ import org.apache.hudi.index.HoodieIndex;
 import org.apache.hudi.table.HoodieTable;
 import org.apache.hudi.table.action.HoodieWriteMetadata;
 
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericRecord;
+
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Properties;
 import java.util.stream.Collectors;
 
 /**
@@ -54,9 +58,16 @@ public class FlinkWriteHelper<T extends HoodieRecordPayload, R> extends Abstract
 
   private static class WriteHelperHolder {
     private static final FlinkWriteHelper FLINK_WRITE_HELPER = new FlinkWriteHelper();
+    private static final Properties properties = new Properties();
+    private static Schema schema;
   }
 
   public static FlinkWriteHelper newInstance() {
+    return WriteHelperHolder.FLINK_WRITE_HELPER;
+  }
+
+  public static FlinkWriteHelper newInstance(Schema recordSchema) {
+    WriteHelperHolder.schema = recordSchema;
     return WriteHelperHolder.FLINK_WRITE_HELPER;
   }
 
@@ -93,7 +104,7 @@ public class FlinkWriteHelper<T extends HoodieRecordPayload, R> extends Abstract
       final T data1 = rec1.getData();
       final T data2 = rec2.getData();
 
-      @SuppressWarnings("unchecked") final T reducedData = (T) data2.preCombine(data1);
+      @SuppressWarnings("unchecked") final T reducedData = (T) data2.preCombine(data1, WriteHelperHolder.schema, WriteHelperHolder.properties);
       // we cannot allow the user to change the key or partitionPath, since that will affect
       // everything
       // so pick it from one of the records.

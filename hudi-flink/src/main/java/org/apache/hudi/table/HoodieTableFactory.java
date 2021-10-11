@@ -18,6 +18,8 @@
 
 package org.apache.hudi.table;
 
+import org.apache.hudi.common.model.OverwriteNonDefaultsWithLatestAvroPayload;
+import org.apache.hudi.common.model.PartialUpdateAvroPayload;
 import org.apache.hudi.configuration.FlinkOptions;
 import org.apache.hudi.exception.HoodieValidationException;
 import org.apache.hudi.hive.MultiPartKeysValueExtractor;
@@ -159,6 +161,10 @@ public class HoodieTableFactory implements DynamicTableSourceFactory, DynamicTab
     setupReadOptions(conf);
     // infer avro schema from physical DDL schema
     inferAvroSchema(conf, schema.toPhysicalRowDataType().notNull().getLogicalType());
+
+    if (conf.getBoolean(FlinkOptions.PARTIAL_UPDATE_ENABLED)) {
+      conf.setString(FlinkOptions.PAYLOAD_CLASS_NAME, PartialUpdateAvroPayload.class.getName());
+    }
   }
 
   /**

@@ -18,7 +18,14 @@
 
 package org.apache.hudi.table;
 
+import org.apache.hudi.common.fs.FSUtils;
+import org.apache.hudi.common.model.HoodieKey;
+import org.apache.hudi.common.model.HoodieLogFile;
 import org.apache.hudi.common.model.HoodieTableType;
+import org.apache.hudi.common.table.log.HoodieLogFormat;
+import org.apache.hudi.common.table.log.block.HoodieAvroDataBlock;
+import org.apache.hudi.common.table.log.block.HoodieDeleteBlock;
+import org.apache.hudi.common.table.log.block.HoodieLogBlock;
 import org.apache.hudi.common.table.timeline.HoodieTimeline;
 import org.apache.hudi.configuration.FlinkOptions;
 import org.apache.hudi.util.StreamerUtil;
@@ -28,6 +35,8 @@ import org.apache.hudi.utils.TestSQL;
 import org.apache.hudi.utils.TestUtils;
 import org.apache.hudi.utils.factory.CollectSinkTableFactory;
 
+import org.apache.avro.Schema;
+import org.apache.avro.generic.IndexedRecord;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.core.execution.JobClient;
 import org.apache.flink.table.api.EnvironmentSettings;
@@ -41,6 +50,8 @@ import org.apache.flink.table.catalog.exceptions.TableNotExistException;
 import org.apache.flink.test.util.AbstractTestBase;
 import org.apache.flink.types.Row;
 import org.apache.flink.util.CollectionUtil;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -51,6 +62,7 @@ import org.junit.jupiter.params.provider.MethodSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
 import java.io.File;
+import java.io.IOException;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -852,6 +864,87 @@ public class HoodieDataSourceITCase extends AbstractTestBase {
         + "+I[id6, Emma, 20, 1970-01-01T00:00:06, par3], "
         + "+I[id7, Bob, 44, 1970-01-01T00:00:07, par4], "
         + "+I[id8, Han, 56, 1970-01-01T00:00:08, par4]]");
+  }
+
+  /**
+   *   @Test
+   *   void testWriteGlobalIndex() {
+   *     // the source generates 4 commits
+   *     String createSource = TestConfigurations.getFileSourceDDL(
+   *         "source", "test_source_4.data", 4);
+   *     streamTableEnv.executeSql(createSource);
+   *
+   *     String hoodieTableDDL = sql("t1")
+   *         .option(FlinkOptions.PATH, tempFile.getAbsolutePath())
+   *         .option(FlinkOptions.INDEX_GLOBAL_ENABLED, true)
+   *         .option(FlinkOptions.INSERT_DROP_DUPS, true)
+   *         .end();
+   *     streamTableEnv.executeSql(hoodieTableDDL);
+   *
+   *     final String insertInto2 = "insert into t1 select * from source";
+   *
+   *     execInsertSql(streamTableEnv, insertInto2);
+   *
+   *     List<Row> result = CollectionUtil.iterableToList(
+   *         () -> streamTableEnv.sqlQuery("select * from t1").execute().collect());
+   *     assertRowsEquals(result, "[+I[id1, Phoebe, 52, 1970-01-01T00:00:08, par4]]");
+   *   }
+   */
+
+  @ParameterizedTest
+  @EnumSource(value = HoodieTableType.class)
+  void testWriteAndReadPartial(HoodieTableType tableType) throws IOException {
+    // create filesystem table named source
+    String createSource = TestConfigurations.getFileSourceDDL("source", "test_source_6.data");
+    streamTableEnv.executeSql(createSource);
+
+    String createHoodieTable1 = sql("t1")
+        .option(FlinkOptions.PATH, tempFile.getAbsolutePath())
+        .option(FlinkOptions.TABLE_TYPE, FlinkOptions.TABLE_TYPE_MERGE_ON_READ)
+        .option(FlinkOptions.PARTIAL_UPDATE_ENABLED, true)
+        .option(FlinkOptions.INSERT_DROP_DUPS, true)
+        .option(FlinkOptions.INDEX_GLOBAL_ENABLED, true)
+        .option(FlinkOptions.BUCKET_ASSIGN_TASKS, 1)
+        .end();
+    streamTableEnv.executeSql(createHoodieTable1);
+
+    String insertInto = "insert into t1 select * from source";
+
+    execInsertSql(streamTableEnv, insertInto);
+
+    List<Row> rows = CollectionUtil.iterableToList(
+        () -> streamTableEnv.sqlQuery("select * from t1").execute().collect());
+    assertRowsEquals(rows, TestData.DATA_SET_SOURCE_PARTIAL_UPDATE);
+  }
+
+  @Test
+  public void log() throws IOException {
+    String path = Objects.requireNonNull(Thread.currentThread()
+        .getContextClassLoader().getResource("test_read_schema.avsc")).toString();
+    FileSystem fs = FSUtils.getFs(path, new org.apache.hadoop.conf.Configuration());
+    Schema schema = new Schema.Parser().parse(fs.open(new Path(path)));
+    HoodieLogFormat.Reader reader = HoodieLogFormat.newReader(FileSystem.getLocal(new org.apache.hadoop.conf.Configuration()),
+        new HoodieLogFile("file:///var/folders/07/_hfj_kqx7tdbpdxnp5sbm_pm0000gp/T/junit3896278998468088/par2/.649f6801-02cd-4936-aac9-af8259ee51ad_20211009164148.log.2_1-4-1"),
+        schema
+    );
+    while (reader.hasNext()) {
+      HoodieLogBlock block = reader.next();
+      switch (block.getBlockType()) {
+        case AVRO_DATA_BLOCK:
+          List<IndexedRecord> records = ((HoodieAvroDataBlock) block).getRecords();
+          System.out.println(records.get(0));
+          break;
+        case DELETE_BLOCK:
+          HoodieKey[] keysToDelete = ((HoodieDeleteBlock) block).getKeysToDelete();
+          for (HoodieKey hoodieKey : keysToDelete) {
+            System.out.println(hoodieKey);
+          }
+          break;
+        default:
+          break;
+      }
+    }
+    reader.close();
   }
 
   @Test
