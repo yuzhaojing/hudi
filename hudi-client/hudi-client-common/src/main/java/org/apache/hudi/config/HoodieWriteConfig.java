@@ -39,6 +39,7 @@ import org.apache.hudi.common.model.HoodieFileFormat;
 import org.apache.hudi.common.model.HoodieTableType;
 import org.apache.hudi.common.model.OverwriteWithLatestAvroPayload;
 import org.apache.hudi.common.model.WriteConcurrencyMode;
+import org.apache.hudi.common.table.ActionServiceConfig;
 import org.apache.hudi.common.table.HoodieTableConfig;
 import org.apache.hudi.common.table.log.block.HoodieLogBlock;
 import org.apache.hudi.common.table.marker.MarkerType;
@@ -322,6 +323,11 @@ public class HoodieWriteConfig extends HoodieConfig {
           + "lowest and best effort file sizing. "
           + "NONE: No sorting. Fastest and matches `spark.write.parquet()` in terms of number of files, overheads");
 
+  public static final ConfigProperty<String> ACTION_SERVER_ENABLE = ConfigProperty
+      .key("hoodie.action.server")
+      .defaultValue("false")
+      .withDocumentation("When true, schedule compaction and clustering plan in client and report to action server to execute.");
+
   public static final ConfigProperty<String> EMBEDDED_TIMELINE_SERVER_ENABLE = ConfigProperty
       .key("hoodie.embed.timeline.server")
       .defaultValue("true")
@@ -499,6 +505,7 @@ public class HoodieWriteConfig extends HoodieConfig {
   private HoodieMetadataConfig metadataConfig;
   private HoodieMetastoreConfig metastoreConfig;
   private HoodieCommonConfig commonConfig;
+  private ActionServiceConfig actionServiceConfig;
   private EngineType engineType;
 
   /**
@@ -891,6 +898,7 @@ public class HoodieWriteConfig extends HoodieConfig {
     this.metadataConfig = HoodieMetadataConfig.newBuilder().fromProperties(props).build();
     this.metastoreConfig = HoodieMetastoreConfig.newBuilder().fromProperties(props).build();
     this.commonConfig = HoodieCommonConfig.newBuilder().fromProperties(props).build();
+    this.actionServiceConfig = ActionServiceConfig.newBuilder().fromProperties(props).build();
   }
 
   public static HoodieWriteConfig.Builder newBuilder() {
@@ -1074,6 +1082,10 @@ public class HoodieWriteConfig extends HoodieConfig {
 
   public int getMarkersDeleteParallelism() {
     return getInt(MARKERS_DELETE_PARALLELISM_VALUE);
+  }
+
+  public boolean isActionServerEnabled() {
+    return getBoolean(ACTION_SERVER_ENABLE);
   }
 
   public boolean isEmbeddedTimelineServerEnabled() {
@@ -1908,6 +1920,10 @@ public class HoodieWriteConfig extends HoodieConfig {
     return commonConfig;
   }
 
+  public ActionServiceConfig getActionServiceConfig() {
+    return actionServiceConfig;
+  }
+
   /**
    * Commit call back configs.
    */
@@ -2401,6 +2417,11 @@ public class HoodieWriteConfig extends HoodieConfig {
 
     public Builder withMarkersDeleteParallelism(int parallelism) {
       writeConfig.setValue(MARKERS_DELETE_PARALLELISM_VALUE, String.valueOf(parallelism));
+      return this;
+    }
+
+    public Builder withActionServerEnabled(boolean enabled) {
+      writeConfig.setValue(ACTION_SERVER_ENABLE, String.valueOf(enabled));
       return this;
     }
 

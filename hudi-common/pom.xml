@@ -94,6 +94,7 @@
             <import>${basedir}/src/main/avro/HoodieIndexPlan.avsc</import>
             <import>${basedir}/src/main/avro/HoodieIndexCommitMetadata.avsc</import>
             <import>${basedir}/src/main/avro/HoodieArchivedMetaEntry.avsc</import>
+            <import>${basedir}/src/main/avro/HoodieServiceRecord.avsc</import>
           </imports>
         </configuration>
       </plugin>

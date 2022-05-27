@@ -135,7 +135,7 @@ public abstract class AbstractStreamWriteFunction<I>
     this.metaClient = StreamerUtil.createMetaClient(this.config);
     this.writeClient = StreamerUtil.createWriteClient(this.config, getRuntimeContext());
     this.writeStatuses = new ArrayList<>();
-    this.writeMetadataState = context.getOperatorStateStore().getListState(
+    this.writeMetadataState = context.getOperatorStateStore().getUnionListState().getListState(
         new ListStateDescriptor<>(
             "write-metadata-state",
             TypeInformation.of(WriteMetadataEvent.class)

@@ -23,6 +23,8 @@ import org.apache.hudi.common.engine.EngineType;
 import org.apache.hudi.common.engine.HoodieEngineContext;
 import org.apache.hudi.common.model.HoodieFileGroupId;
 import org.apache.hudi.common.model.HoodieRecordPayload;
+import org.apache.hudi.common.table.ActionServiceClient;
+import org.apache.hudi.common.table.HoodieTableMetaClient;
 import org.apache.hudi.common.table.timeline.HoodieActiveTimeline;
 import org.apache.hudi.common.table.timeline.HoodieInstant;
 import org.apache.hudi.common.table.timeline.HoodieTimeline;
@@ -91,6 +93,7 @@ public class ScheduleCompactionActionExecutor<T extends HoodieRecordPayload, I, 
     }
 
     HoodieCompactionPlan plan = scheduleCompaction();
+    Option<HoodieCompactionPlan> option = Option.empty();
     if (plan != null && (plan.getOperations() != null) && (!plan.getOperations().isEmpty())) {
       extraMetadata.ifPresent(plan::setExtraMetadata);
       HoodieInstant compactionInstant =
@@ -101,9 +104,14 @@ public class ScheduleCompactionActionExecutor<T extends HoodieRecordPayload, I, 
       } catch (IOException ioe) {
         throw new HoodieIOException("Exception scheduling compaction", ioe);
       }
-      return Option.of(plan);
+      option = Option.of(plan);
     }
-    return Option.empty();
+
+    if (config.isActionServerEnabled()) {
+      scheduleCompactionToService();
+    }
+
+    return option;
   }
 
   private HoodieCompactionPlan scheduleCompaction() {
@@ -193,5 +201,24 @@ public class ScheduleCompactionActionExecutor<T extends HoodieRecordPayload, I, 
       throw new HoodieCompactionException(e.getMessage(), e);
     }
     return timestamp;
+  }
+
+  private void scheduleCompactionToService() {
+    HoodieTableMetaClient metaClient = table.getMetaClient();
+    HoodieTimeline pendingCompactionTimeline = metaClient.reloadActiveTimeline().filterPendingCompactionTimeline();
+
+    ActionServiceClient client = new ActionServiceClient(
+        config.getActionServiceConfig().getActionServiceHost(),
+        config.getActionServiceConfig().getActionServicePort(),
+        metaClient.getBasePath(),
+        config.getActionServiceConfig().getActionServiceTimeoutSecs());
+
+    pendingCompactionTimeline.getInstants()
+        .forEach(instant -> client.scheduleCompaction(
+            metaClient.getTableConfig().getDatabaseName(),
+            metaClient.getTableConfig().getTableName(),
+            instant.getTimestamp(),
+            config.getActionServiceConfig().getActionServiceClientOwner(),
+            config.getActionServiceConfig().getActionServiceClientQueue()));
   }
 }

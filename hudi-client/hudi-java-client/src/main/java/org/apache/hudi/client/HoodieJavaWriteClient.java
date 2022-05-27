@@ -88,6 +88,10 @@ public class HoodieJavaWriteClient<T extends HoodieRecordPayload> extends
     return commitStats(instantTime, writeStats, extraMetadata, commitActionType, partitionToReplacedFileIds);
   }
 
+  public HoodieTable<T, List<HoodieRecord<T>>, List<HoodieKey>, List<WriteStatus>> getHoodieTable() {
+    return HoodieJavaTable.create(config, context);
+  }
+
   @Override
   protected HoodieTable createTable(HoodieWriteConfig config,
                                     Configuration hadoopConf,
