@@ -27,6 +27,7 @@ import org.apache.hudi.avro.model.HoodieCleanerPlan;
 import org.apache.hudi.client.transaction.TransactionManager;
 import org.apache.hudi.common.HoodieCleanStat;
 import org.apache.hudi.common.engine.HoodieEngineContext;
+import org.apache.hudi.common.model.ActionType;
 import org.apache.hudi.common.model.CleanFileInfo;
 import org.apache.hudi.common.model.HoodieRecordPayload;
 import org.apache.hudi.common.table.timeline.HoodieInstant;
@@ -236,6 +237,11 @@ public class CleanActionExecutor<T extends HoodieRecordPayload, I, K, O> extends
 
   @Override
   public HoodieCleanMetadata execute() {
+    if (config.isTableManagerEnabled() && config.getTableManagerConfig().getTableManagerActions().contains(ActionType.clean.name())) {
+      LOG.warn("Compaction delegate to table management service, do not clean for client!");
+      return null;
+    }
+
     List<HoodieCleanMetadata> cleanMetadataList = new ArrayList<>();
     // If there are inflight(failed) or previously requested clean operation, first perform them
     List<HoodieInstant> pendingCleanInstants = table.getCleanTimeline()
