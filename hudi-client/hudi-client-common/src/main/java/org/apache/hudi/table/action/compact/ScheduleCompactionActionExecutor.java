@@ -19,10 +19,13 @@
 package org.apache.hudi.table.action.compact;
 
 import org.apache.hudi.avro.model.HoodieCompactionPlan;
+import org.apache.hudi.client.table.manager.HoodieTableManagerClient;
 import org.apache.hudi.common.engine.EngineType;
 import org.apache.hudi.common.engine.HoodieEngineContext;
+import org.apache.hudi.common.model.ActionType;
 import org.apache.hudi.common.model.HoodieFileGroupId;
 import org.apache.hudi.common.model.HoodieRecordPayload;
+import org.apache.hudi.common.table.HoodieTableMetaClient;
 import org.apache.hudi.common.table.timeline.HoodieActiveTimeline;
 import org.apache.hudi.common.table.timeline.HoodieInstant;
 import org.apache.hudi.common.table.timeline.HoodieTimeline;
@@ -91,6 +94,7 @@ public class ScheduleCompactionActionExecutor<T extends HoodieRecordPayload, I, 
     }
 
     HoodieCompactionPlan plan = scheduleCompaction();
+    Option<HoodieCompactionPlan> option = Option.empty();
     if (plan != null && (plan.getOperations() != null) && (!plan.getOperations().isEmpty())) {
       extraMetadata.ifPresent(plan::setExtraMetadata);
       HoodieInstant compactionInstant =
@@ -101,9 +105,14 @@ public class ScheduleCompactionActionExecutor<T extends HoodieRecordPayload, I, 
       } catch (IOException ioe) {
         throw new HoodieIOException("Exception scheduling compaction", ioe);
       }
-      return Option.of(plan);
+      option = Option.of(plan);
     }
-    return Option.empty();
+
+    if (config.isTableManagerEnabled() && config.getTableManagerConfig().getTableManagerActions().contains(ActionType.compaction.name())) {
+      submitCompactionToService();
+    }
+
+    return option;
   }
 
   private HoodieCompactionPlan scheduleCompaction() {
@@ -193,5 +202,16 @@ public class ScheduleCompactionActionExecutor<T extends HoodieRecordPayload, I, 
       throw new HoodieCompactionException(e.getMessage(), e);
     }
     return timestamp;
+  }
+
+  private void submitCompactionToService() {
+    HoodieTableMetaClient metaClient = table.getMetaClient();
+    List<String> instantsToSubmit = metaClient.getActiveTimeline()
+        .filterPendingCompactionTimeline()
+        .getInstants()
+        .map(HoodieInstant::getTimestamp)
+        .collect(Collectors.toList());
+    HoodieTableManagerClient tableManagerClient = new HoodieTableManagerClient(metaClient, config.getTableManagerConfig());
+    tableManagerClient.submitCompaction(instantsToSubmit);
   }
 }

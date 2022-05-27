@@ -37,6 +37,8 @@ public class HoodieWriteMetadata<O> {
 
   // Will be set when auto-commit happens
   private boolean isCommitted;
+  // Will be set when table management service enable
+  private boolean isEmpty;
   private Option<HoodieCommitMetadata> commitMetadata = Option.empty();
   private Option<List<HoodieWriteStat>> writeStats = Option.empty();
   private Option<Duration> indexUpdateDuration = Option.empty();
@@ -60,6 +62,7 @@ public class HoodieWriteMetadata<O> {
       newMetadataInstance.setIndexLookupDuration(indexLookupDuration.get());
     }
     newMetadataInstance.setCommitted(isCommitted);
+    newMetadataInstance.setEmpty(isEmpty);
     newMetadataInstance.setCommitMetadata(commitMetadata);
     if (writeStats.isPresent()) {
       newMetadataInstance.setWriteStats(writeStats.get());
@@ -114,6 +117,14 @@ public class HoodieWriteMetadata<O> {
 
   public void setCommitted(boolean committed) {
     isCommitted = committed;
+  }
+
+  public boolean isEmpty() {
+    return isEmpty;
+  }
+
+  public void setEmpty(boolean empty) {
+    isEmpty = empty;
   }
 
   public Option<List<HoodieWriteStat>> getWriteStats() {

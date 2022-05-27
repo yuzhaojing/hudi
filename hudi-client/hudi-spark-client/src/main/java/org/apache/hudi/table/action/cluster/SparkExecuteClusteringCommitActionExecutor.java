@@ -22,6 +22,7 @@ import org.apache.hudi.avro.model.HoodieClusteringPlan;
 import org.apache.hudi.client.WriteStatus;
 import org.apache.hudi.common.data.HoodieData;
 import org.apache.hudi.common.engine.HoodieEngineContext;
+import org.apache.hudi.common.model.ActionType;
 import org.apache.hudi.common.model.HoodieRecordPayload;
 import org.apache.hudi.common.model.WriteOperationType;
 import org.apache.hudi.common.table.timeline.HoodieTimeline;
@@ -33,9 +34,13 @@ import org.apache.hudi.table.HoodieTable;
 import org.apache.hudi.table.action.HoodieWriteMetadata;
 import org.apache.hudi.table.action.commit.BaseSparkCommitActionExecutor;
 
+import org.apache.log4j.LogManager;
+import org.apache.log4j.Logger;
+
 public class SparkExecuteClusteringCommitActionExecutor<T extends HoodieRecordPayload<T>>
     extends BaseSparkCommitActionExecutor<T> {
 
+  private static final Logger LOG = LogManager.getLogger(SparkExecuteClusteringCommitActionExecutor.class);
   private final HoodieClusteringPlan clusteringPlan;
 
   public SparkExecuteClusteringCommitActionExecutor(HoodieEngineContext context,
@@ -50,6 +55,13 @@ public class SparkExecuteClusteringCommitActionExecutor<T extends HoodieRecordPa
 
   @Override
   public HoodieWriteMetadata<HoodieData<WriteStatus>> execute() {
+    if (config.isTableManagerEnabled() && config.getTableManagerConfig().getTableManagerActions().contains(ActionType.replacecommit.name())) {
+      LOG.warn("Clustering delegate to table management service, do not cluster for client!");
+      HoodieWriteMetadata<HoodieData<WriteStatus>> clusteringMetadata = new HoodieWriteMetadata<>();
+      clusteringMetadata.setEmpty(true);
+      return clusteringMetadata;
+    }
+
     return executeClustering(clusteringPlan);
   }
 

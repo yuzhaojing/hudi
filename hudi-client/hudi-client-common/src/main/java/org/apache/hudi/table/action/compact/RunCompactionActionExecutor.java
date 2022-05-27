@@ -22,6 +22,7 @@ import org.apache.hudi.avro.model.HoodieCompactionPlan;
 import org.apache.hudi.client.WriteStatus;
 import org.apache.hudi.common.data.HoodieData;
 import org.apache.hudi.common.engine.HoodieEngineContext;
+import org.apache.hudi.common.model.ActionType;
 import org.apache.hudi.common.model.HoodieCommitMetadata;
 import org.apache.hudi.common.model.HoodieKey;
 import org.apache.hudi.common.model.HoodieRecord;
@@ -41,6 +42,9 @@ import org.apache.hudi.table.HoodieTable;
 import org.apache.hudi.table.action.BaseActionExecutor;
 import org.apache.hudi.table.action.HoodieWriteMetadata;
 
+import org.apache.log4j.LogManager;
+import org.apache.log4j.Logger;
+
 import java.io.IOException;
 import java.util.List;
 
@@ -48,6 +52,7 @@ import java.util.List;
 public class RunCompactionActionExecutor<T extends HoodieRecordPayload> extends
     BaseActionExecutor<T, HoodieData<HoodieRecord<T>>, HoodieData<HoodieKey>, HoodieData<WriteStatus>, HoodieWriteMetadata<HoodieData<WriteStatus>>> {
 
+  private static final Logger LOG = LogManager.getLogger(RunCompactionActionExecutor.class);
   private final HoodieCompactor compactor;
   private final HoodieCompactionHandler compactionHandler;
 
@@ -64,10 +69,16 @@ public class RunCompactionActionExecutor<T extends HoodieRecordPayload> extends
 
   @Override
   public HoodieWriteMetadata<HoodieData<WriteStatus>> execute() {
+    HoodieWriteMetadata<HoodieData<WriteStatus>> compactionMetadata = new HoodieWriteMetadata<>();
+    if (config.isTableManagerEnabled() && config.getTableManagerConfig().getTableManagerActions().contains(ActionType.compaction.name())) {
+      LOG.warn("Compaction delegate to table management service, do not compact for client!");
+      compactionMetadata.setEmpty(true);
+      return compactionMetadata;
+    }
+
     HoodieTimeline pendingCompactionTimeline = table.getActiveTimeline().filterPendingCompactionTimeline();
     compactor.preCompact(table, pendingCompactionTimeline, instantTime);
 
-    HoodieWriteMetadata<HoodieData<WriteStatus>> compactionMetadata = new HoodieWriteMetadata<>();
     try {
       // generate compaction plan
       // should support configurable commit metadata

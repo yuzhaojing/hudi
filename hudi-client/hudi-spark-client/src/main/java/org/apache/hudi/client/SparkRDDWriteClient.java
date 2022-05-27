@@ -344,7 +344,7 @@ public class SparkRDDWriteClient<T extends HoodieRecordPayload> extends
     compactionTimer = metrics.getCompactionCtx();
     HoodieWriteMetadata<HoodieData<WriteStatus>> writeMetadata = table.compact(context, compactionInstantTime);
     HoodieWriteMetadata<JavaRDD<WriteStatus>> compactionMetadata = writeMetadata.clone(HoodieJavaRDD.getJavaRDD(writeMetadata.getWriteStatuses()));
-    if (shouldComplete && compactionMetadata.getCommitMetadata().isPresent()) {
+    if (shouldComplete && compactionMetadata.getCommitMetadata().isPresent() && !compactionMetadata.isEmpty()) {
       completeTableService(TableServiceType.COMPACT, compactionMetadata.getCommitMetadata().get(), table, compactionInstantTime);
     }
     return compactionMetadata;
@@ -365,7 +365,7 @@ public class SparkRDDWriteClient<T extends HoodieRecordPayload> extends
     HoodieWriteMetadata<HoodieData<WriteStatus>> writeMetadata = table.cluster(context, clusteringInstant);
     HoodieWriteMetadata<JavaRDD<WriteStatus>> clusteringMetadata = writeMetadata.clone(HoodieJavaRDD.getJavaRDD(writeMetadata.getWriteStatuses()));
     // TODO : Where is shouldComplete used ?
-    if (shouldComplete && clusteringMetadata.getCommitMetadata().isPresent()) {
+    if (shouldComplete && clusteringMetadata.getCommitMetadata().isPresent() && !clusteringMetadata.isEmpty()) {
       completeTableService(TableServiceType.CLUSTER, clusteringMetadata.getCommitMetadata().get(), table, clusteringInstant);
     }
     return clusteringMetadata;
