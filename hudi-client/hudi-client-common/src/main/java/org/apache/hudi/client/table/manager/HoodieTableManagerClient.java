@@ -55,7 +55,7 @@ public class HoodieTableManagerClient {
   public static final String TABLE_NAME_PARAM = "table_name";
   public static final String BASEPATH_PARAM = "basepath";
   public static final String INSTANT_PARAM = "instant";
-  public static final String OWNER = "owner";
+  public static final String USERNAME = "username";
   public static final String CLUSTER = "cluster";
   public static final String QUEUE = "queue";
   public static final String RESOURCE = "resource";
@@ -88,7 +88,7 @@ public class HoodieTableManagerClient {
         new URIBuilder().setHost(host).setPort(port).setPath(requestPath).setScheme("http");
 
     Map<String, String> queryParameters = getParamsWithAdditionalParams(
-        new String[] {DATABASE_NAME_PARAM, TABLE_NAME_PARAM, INSTANT_PARAM, OWNER, QUEUE, RESOURCE, PARALLELISM, EXTRA_PARAMS},
+        new String[] {DATABASE_NAME_PARAM, TABLE_NAME_PARAM, INSTANT_PARAM, USERNAME, QUEUE, RESOURCE, PARALLELISM, EXTRA_PARAMS},
         new String[] {dbName, tableName, instantRange, config.getDeployUsername(), config.getDeployQueue(),
             config.getDeployResource(), String.valueOf(config.getDeployParallelism()), config.getDeployExtraParams()});
     queryParameters.forEach(builder::addParameter);

@@ -335,6 +335,10 @@ public class SparkRDDWriteClient<T extends HoodieRecordPayload> extends
   protected HoodieWriteMetadata<JavaRDD<WriteStatus>> compact(String compactionInstantTime, boolean shouldComplete) {
     HoodieSparkTable<T> table = HoodieSparkTable.create(config, context, true);
     preWrite(compactionInstantTime, WriteOperationType.COMPACT, table.getMetaClient());
+    // do not compact a complete instant.
+    if (table.getActiveTimeline().filterCompletedInstants().containsInstant(compactionInstantTime)) {
+      return null;
+    }
     HoodieTimeline pendingCompactionTimeline = table.getActiveTimeline().filterPendingCompactionTimeline();
     HoodieInstant inflightInstant = HoodieTimeline.getCompactionInflightInstant(compactionInstantTime);
     if (pendingCompactionTimeline.containsInstant(inflightInstant)) {
