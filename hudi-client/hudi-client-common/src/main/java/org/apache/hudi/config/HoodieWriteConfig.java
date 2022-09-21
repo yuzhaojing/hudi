@@ -30,6 +30,7 @@ import org.apache.hudi.common.config.HoodieConfig;
 import org.apache.hudi.common.config.HoodieMetadataConfig;
 import org.apache.hudi.common.config.HoodieMetastoreConfig;
 import org.apache.hudi.common.config.HoodieStorageConfig;
+import org.apache.hudi.common.config.HoodieTableServiceManagerConfig;
 import org.apache.hudi.common.config.TypedProperties;
 import org.apache.hudi.common.engine.EngineType;
 import org.apache.hudi.common.fs.ConsistencyGuardConfig;
@@ -559,6 +560,7 @@ public class HoodieWriteConfig extends HoodieConfig {
   private HoodiePayloadConfig hoodiePayloadConfig;
   private HoodieMetadataConfig metadataConfig;
   private HoodieMetastoreConfig metastoreConfig;
+  private HoodieTableServiceManagerConfig tableServiceManagerConfig;
   private HoodieCommonConfig commonConfig;
   private HoodieStorageConfig storageConfig;
   private EngineType engineType;
@@ -952,6 +954,7 @@ public class HoodieWriteConfig extends HoodieConfig {
     this.hoodiePayloadConfig = HoodiePayloadConfig.newBuilder().fromProperties(newProps).build();
     this.metadataConfig = HoodieMetadataConfig.newBuilder().fromProperties(props).build();
     this.metastoreConfig = HoodieMetastoreConfig.newBuilder().fromProperties(props).build();
+    this.tableServiceManagerConfig = HoodieTableServiceManagerConfig.newBuilder().fromProperties(props).build();
     this.commonConfig = HoodieCommonConfig.newBuilder().fromProperties(props).build();
     this.storageConfig = HoodieStorageConfig.newBuilder().fromProperties(props).build();
   }
@@ -2062,6 +2065,10 @@ public class HoodieWriteConfig extends HoodieConfig {
     return metadataConfig;
   }
 
+  public HoodieTableServiceManagerConfig getTableServiceManagerConfig() {
+    return tableServiceManagerConfig;
+  }
+
   public HoodieCommonConfig getCommonConfig() {
     return commonConfig;
   }
@@ -2284,6 +2291,13 @@ public class HoodieWriteConfig extends HoodieConfig {
   public HoodieCDCSupplementalLoggingMode getCDCSupplementalLoggingMode() {
     return HoodieCDCSupplementalLoggingMode.parse(
         getStringOrDefault(HoodieTableConfig.CDC_SUPPLEMENTAL_LOGGING_MODE));
+  }
+
+  /**
+   * Table Service Manager configs.
+   */
+  public boolean isTableServiceManagerEnabled() {
+    return tableServiceManagerConfig.isTableServiceManagerEnabled();
   }
 
   public static class Builder {
