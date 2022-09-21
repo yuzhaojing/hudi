@@ -29,6 +29,7 @@ import org.apache.hudi.common.config.HoodieCommonConfig;
 import org.apache.hudi.common.config.HoodieConfig;
 import org.apache.hudi.common.config.HoodieMetadataConfig;
 import org.apache.hudi.common.config.HoodieMetastoreConfig;
+import org.apache.hudi.common.config.HoodieTableManagerConfig;
 import org.apache.hudi.common.config.TypedProperties;
 import org.apache.hudi.common.engine.EngineType;
 import org.apache.hudi.common.fs.ConsistencyGuardConfig;
@@ -498,6 +499,7 @@ public class HoodieWriteConfig extends HoodieConfig {
   private HoodiePayloadConfig hoodiePayloadConfig;
   private HoodieMetadataConfig metadataConfig;
   private HoodieMetastoreConfig metastoreConfig;
+  private HoodieTableManagerConfig tableManagerConfig;
   private HoodieCommonConfig commonConfig;
   private EngineType engineType;
 
@@ -890,6 +892,7 @@ public class HoodieWriteConfig extends HoodieConfig {
     this.hoodiePayloadConfig = HoodiePayloadConfig.newBuilder().fromProperties(newProps).build();
     this.metadataConfig = HoodieMetadataConfig.newBuilder().fromProperties(props).build();
     this.metastoreConfig = HoodieMetastoreConfig.newBuilder().fromProperties(props).build();
+    this.tableManagerConfig = HoodieTableManagerConfig.newBuilder().fromProperties(props).build();
     this.commonConfig = HoodieCommonConfig.newBuilder().fromProperties(props).build();
   }
 
@@ -1971,6 +1974,10 @@ public class HoodieWriteConfig extends HoodieConfig {
     return metadataConfig;
   }
 
+  public HoodieTableManagerConfig getTableManagerConfig() {
+    return tableManagerConfig;
+  }
+
   public HoodieCommonConfig getCommonConfig() {
     return commonConfig;
   }
@@ -2189,6 +2196,13 @@ public class HoodieWriteConfig extends HoodieConfig {
   public HoodieCDCSupplementalLoggingMode getCDCSupplementalLoggingMode() {
     return HoodieCDCSupplementalLoggingMode.parse(
         getStringOrDefault(HoodieTableConfig.CDC_SUPPLEMENTAL_LOGGING_MODE));
+  }
+
+  /**
+   * Table Manager configs.
+   */
+  public boolean isTableManagerEnabled() {
+    return tableManagerConfig.enableTableManager();
   }
 
   public static class Builder {
