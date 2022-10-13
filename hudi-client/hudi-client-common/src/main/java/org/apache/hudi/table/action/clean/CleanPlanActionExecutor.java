@@ -22,7 +22,7 @@ import org.apache.hudi.avro.model.HoodieActionInstant;
 import org.apache.hudi.avro.model.HoodieCleanFileInfo;
 import org.apache.hudi.avro.model.HoodieCleanMetadata;
 import org.apache.hudi.avro.model.HoodieCleanerPlan;
-import org.apache.hudi.client.table.manager.HoodieTableManagerClient;
+import org.apache.hudi.client.HoodieTableManagementClient;
 import org.apache.hudi.common.engine.HoodieEngineContext;
 import org.apache.hudi.common.model.ActionType;
 import org.apache.hudi.common.model.CleanFileInfo;
@@ -165,16 +165,16 @@ public class CleanPlanActionExecutor<T extends HoodieRecordPayload, I, K, O> ext
       option = Option.of(cleanerPlan);
     }
 
-    if (config.getTableManagerConfig().isTableManagerSupportsAction(ActionType.clean)) {
-      delegateCleanExecutionToTableManager();
+    if (config.getTableManagementConfig().isTableManagementSupportsAction(ActionType.clean)) {
+      delegateCleanExecutionToTableManagement();
     }
 
     return option;
   }
 
-  private void delegateCleanExecutionToTableManager() {
-    HoodieTableManagerClient tableManagerClient = new HoodieTableManagerClient(table.getMetaClient(), config.getTableManagerConfig());
-    tableManagerClient.executeClean();
+  private void delegateCleanExecutionToTableManagement() {
+    HoodieTableManagementClient TableManagementClient = new HoodieTableManagementClient(table.getMetaClient(), config.getTableManagementConfig());
+    TableManagementClient.executeClean();
   }
 
   @Override

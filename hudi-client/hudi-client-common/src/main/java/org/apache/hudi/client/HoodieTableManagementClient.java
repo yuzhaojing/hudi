@@ -16,14 +16,16 @@
  * limitations under the License.
  */
 
-package org.apache.hudi.client.table.manager;
+package org.apache.hudi.client;
 
-import org.apache.hudi.common.config.HoodieTableManagerConfig;
+import org.apache.hudi.common.config.HoodieTableManagementConfig;
 import org.apache.hudi.common.table.HoodieTableMetaClient;
 import org.apache.hudi.common.table.timeline.HoodieInstant;
 import org.apache.hudi.common.util.ClusteringUtils;
+import org.apache.hudi.common.util.Option;
 import org.apache.hudi.common.util.StringUtils;
 import org.apache.hudi.common.util.ValidationUtils;
+import org.apache.hudi.exception.HoodieException;
 import org.apache.hudi.exception.HoodieRemoteException;
 
 import org.apache.http.client.fluent.Request;
@@ -33,6 +35,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
@@ -40,21 +44,26 @@ import java.util.concurrent.TimeUnit;
 /**
  * Client which send the table service instants to the table management service.
  */
-public class HoodieTableManagerClient {
+public class HoodieTableManagementClient {
+
+  /**
+   * Rollback commands, that trigger a specific handling for rollback.
+   */
+  public enum Action {
+    REQUEST,
+    CANCEL,
+    REGISTER
+  }
 
   private static final String BASE_URL = "/v1/hoodie/service";
 
-  public static final String REGISTER_ENDPOINT = String.format("%s/%s", BASE_URL, "register");
+  public static final String EXECUTE_COMPACTION = String.format("%s/%s", BASE_URL, "compact");
 
-  public static final String EXECUTE_COMPACTION = String.format("%s/%s", BASE_URL, "compact/execute");
-  public static final String DELETE_COMPACTION = String.format("%s/%s", BASE_URL, "compact/delete");
+  public static final String EXECUTE_CLUSTERING = String.format("%s/%s", BASE_URL, "cluster");
 
-  public static final String EXECUTE_CLUSTERING = String.format("%s/%s", BASE_URL, "cluster/execute");
-  public static final String DELETE_CLUSTERING = String.format("%s/%s", BASE_URL, "cluster/delete");
+  public static final String EXECUTE_CLEAN = String.format("%s/%s", BASE_URL, "clean");
 
-  public static final String EXECUTE_CLEAN = String.format("%s/%s", BASE_URL, "clean/execute");
-  public static final String DELETE_CLEAN = String.format("%s/%s", BASE_URL, "clean/delete");
-
+  public static final String ACTION = "action";
   public static final String DATABASE_NAME_PARAM = "db_name";
   public static final String TABLE_NAME_PARAM = "table_name";
   public static final String BASEPATH_PARAM = "basepath";
@@ -67,29 +76,31 @@ public class HoodieTableManagerClient {
   public static final String EXTRA_PARAMS = "extra_params";
   public static final String EXECUTION_ENGINE = "execution_engine";
 
-  private final HoodieTableManagerConfig config;
+  private final HoodieTableManagementConfig config;
   private final HoodieTableMetaClient metaClient;
-  private final String host;
-  private final int port;
+  private final String uri;
   private final String basePath;
   private final String dbName;
   private final String tableName;
 
-  private static final Logger LOG = LogManager.getLogger(HoodieTableManagerClient.class);
+  private static final Logger LOG = LogManager.getLogger(HoodieTableManagementClient.class);
 
-  public HoodieTableManagerClient(HoodieTableMetaClient metaClient, HoodieTableManagerConfig config) {
+  public HoodieTableManagementClient(HoodieTableMetaClient metaClient, HoodieTableManagementConfig config) {
     this.basePath = metaClient.getBasePathV2().toString();
     this.dbName = metaClient.getTableConfig().getDatabaseName();
     this.tableName = metaClient.getTableConfig().getTableName();
-    this.host = config.getTableManagerHost();
-    this.port = config.getTableManagerPort();
+    this.uri = config.getTableManagementServiceURIS();
     this.config = config;
     this.metaClient = metaClient;
   }
 
   private String executeRequest(String requestPath, Map<String, String> queryParameters) throws IOException {
-    URIBuilder builder =
-        new URIBuilder().setHost(host).setPort(port).setPath(requestPath).setScheme("http");
+    URIBuilder builder;
+    try {
+      builder = new URIBuilder(new URI(uri)).setPath(requestPath);
+    } catch (URISyntaxException e) {
+      throw new HoodieException("Invalid table table management service uri: " + uri, e);
+    }
     queryParameters.forEach(builder::addParameter);
 
     String url = builder.toString();
@@ -131,15 +142,7 @@ public class HoodieTableManagerClient {
     return paramsMap;
   }
 
-  public void register() {
-    try {
-      executeRequest(REGISTER_ENDPOINT, getDefaultParams(null));
-    } catch (IOException e) {
-      throw new HoodieRemoteException(e);
-    }
-  }
-
-  public void executeCompaction() {
+  public Option<String> executeCompaction() {
     try {
       String instantRange = StringUtils.join(metaClient.reloadActiveTimeline()
           .filterPendingCompactionTimeline()
@@ -147,13 +150,14 @@ public class HoodieTableManagerClient {
           .map(HoodieInstant::getTimestamp)
           .toArray(String[]::new), ",");
 
-      executeRequest(EXECUTE_COMPACTION, getDefaultParams(instantRange));
+      executeRequest(EXECUTE_COMPACTION, getDefaultParams(Action.REQUEST, instantRange));
+      return Option.of(instantRange);
     } catch (IOException e) {
       throw new HoodieRemoteException(e);
     }
   }
 
-  public void executeClean() {
+  public Option<String> executeClean() {
     try {
       String instantRange = StringUtils.join(metaClient.reloadActiveTimeline()
           .getCleanerTimeline()
@@ -162,13 +166,14 @@ public class HoodieTableManagerClient {
           .map(HoodieInstant::getTimestamp)
           .toArray(String[]::new), ",");
 
-      executeRequest(EXECUTE_CLEAN, getDefaultParams(instantRange));
+      executeRequest(EXECUTE_CLEAN, getDefaultParams(Action.REQUEST, instantRange));
+      return Option.of(instantRange);
     } catch (IOException e) {
       throw new HoodieRemoteException(e);
     }
   }
 
-  public void executeClustering() {
+  public Option<String> executeClustering() {
     try {
       metaClient.reloadActiveTimeline();
       String instantRange = StringUtils.join(ClusteringUtils.getPendingClusteringInstantTimes(metaClient)
@@ -176,16 +181,17 @@ public class HoodieTableManagerClient {
           .map(HoodieInstant::getTimestamp)
           .toArray(String[]::new), ",");
 
-      executeRequest(EXECUTE_CLUSTERING, getDefaultParams(instantRange));
+      executeRequest(EXECUTE_CLUSTERING, getDefaultParams(Action.REQUEST, instantRange));
+      return Option.of(instantRange);
     } catch (IOException e) {
       throw new HoodieRemoteException(e);
     }
   }
 
-  private Map<String, String> getDefaultParams(String instantRange) {
+  private Map<String, String> getDefaultParams(Action action, String instantRange) {
     return getParamsWithAdditionalParams(
-        new String[] {DATABASE_NAME_PARAM, TABLE_NAME_PARAM, INSTANT_PARAM, USERNAME, QUEUE, RESOURCE, PARALLELISM, EXTRA_PARAMS, EXECUTION_ENGINE},
-        new String[] {dbName, tableName, instantRange, config.getDeployUsername(), config.getDeployQueue(), config.getDeployResource(),
+        new String[] {ACTION, DATABASE_NAME_PARAM, TABLE_NAME_PARAM, INSTANT_PARAM, USERNAME, QUEUE, RESOURCE, PARALLELISM, EXTRA_PARAMS, EXECUTION_ENGINE},
+        new String[] {action.name(), dbName, tableName, instantRange, config.getDeployUsername(), config.getDeployQueue(), config.getDeployResource(),
             String.valueOf(config.getDeployParallelism()), config.getDeployExtraParams(), config.getDeployExecutionEngine()});
   }
 }

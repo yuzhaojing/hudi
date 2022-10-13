@@ -31,7 +31,7 @@ import java.util.Properties;
 @ConfigClassProperty(name = "Table Management Service Configs",
     groupName = ConfigGroups.Names.WRITE_CLIENT,
     description = "Configurations used by the Hudi Table Management Service.")
-public class HoodieTableManagerConfig extends HoodieConfig {
+public class HoodieTableManagementConfig extends HoodieConfig {
 
   public static final String TABLE_MANAGEMENT_SERVICE_PREFIX = "hoodie.table.management.service";
 
@@ -40,15 +40,10 @@ public class HoodieTableManagerConfig extends HoodieConfig {
       .defaultValue(false)
       .withDocumentation("Use metastore server to store hoodie table metadata");
 
-  public static final ConfigProperty<String> TABLE_MANAGEMENT_SERVICE_HOST = ConfigProperty
-      .key(TABLE_MANAGEMENT_SERVICE_PREFIX + ".host")
-      .defaultValue("localhost")
-      .withDocumentation("Table management service host");
-
-  public static final ConfigProperty<Integer> TABLE_MANAGEMENT_SERVICE_PORT = ConfigProperty
-      .key(TABLE_MANAGEMENT_SERVICE_PREFIX + ".port")
-      .defaultValue(26755)
-      .withDocumentation("Table management service port");
+  public static final ConfigProperty<String> TABLE_MANAGEMENT_SERVICE_URIS = ConfigProperty
+      .key(TABLE_MANAGEMENT_SERVICE_PREFIX + ".uris")
+      .defaultValue("http://localhost:9091")
+      .withDocumentation("Table management service uris");
 
   public static final ConfigProperty<String> TABLE_MANAGEMENT_SERVICE_ACTIONS = ConfigProperty
       .key(TABLE_MANAGEMENT_SERVICE_PREFIX + ".actions")
@@ -105,23 +100,19 @@ public class HoodieTableManagerConfig extends HoodieConfig {
       .defaultValue(0)
       .withDocumentation("Number of connection to table management service unsuccessful tolerable for the client");
 
-  public static HoodieTableManagerConfig.Builder newBuilder() {
-    return new HoodieTableManagerConfig.Builder();
+  public static HoodieTableManagementConfig.Builder newBuilder() {
+    return new HoodieTableManagementConfig.Builder();
   }
 
-  public boolean enableTableManager() {
+  public boolean enableTableManagement() {
     return getBoolean(TABLE_MANAGEMENT_SERVICE_ENABLE);
   }
 
-  public String getTableManagerHost() {
-    return getStringOrDefault(TABLE_MANAGEMENT_SERVICE_HOST);
+  public String getTableManagementServiceURIS() {
+    return getStringOrDefault(TABLE_MANAGEMENT_SERVICE_URIS);
   }
 
-  public Integer getTableManagerPort() {
-    return getIntOrDefault(TABLE_MANAGEMENT_SERVICE_PORT);
-  }
-
-  public String getTableManagerActions() {
+  public String getTableManagementActions() {
     return getStringOrDefault(TABLE_MANAGEMENT_SERVICE_ACTIONS);
   }
 
@@ -165,30 +156,25 @@ public class HoodieTableManagerConfig extends HoodieConfig {
     return getIntOrDefault(TABLE_MANAGEMENT_SERVICE_TOLERABLE_NUM);
   }
 
-  public boolean isTableManagerSupportsAction(ActionType actionType) {
-    return enableTableManager() && getTableManagerActions().contains(actionType.name());
+  public boolean isTableManagementSupportsAction(ActionType actionType) {
+    return enableTableManagement() && getTableManagementActions().contains(actionType.name());
   }
 
   public static class Builder {
-    private final HoodieTableManagerConfig config = new HoodieTableManagerConfig();
+    private final HoodieTableManagementConfig config = new HoodieTableManagementConfig();
 
     public Builder fromProperties(Properties props) {
       this.config.getProps().putAll(props);
       return this;
     }
 
-    public Builder withHost(String host) {
-      config.setValue(TABLE_MANAGEMENT_SERVICE_HOST, host);
+    public Builder setUris(String uris) {
+      config.setValue(TABLE_MANAGEMENT_SERVICE_URIS, uris);
       return this;
     }
 
-    public Builder withPort(String port) {
-      config.setValue(TABLE_MANAGEMENT_SERVICE_PORT, port);
-      return this;
-    }
-
-    public HoodieTableManagerConfig build() {
-      config.setDefaults(HoodieTableManagerConfig.class.getName());
+    public HoodieTableManagementConfig build() {
+      config.setDefaults(HoodieTableManagementConfig.class.getName());
       return config;
     }
   }

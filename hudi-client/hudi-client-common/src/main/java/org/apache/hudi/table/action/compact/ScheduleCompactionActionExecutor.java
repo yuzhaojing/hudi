@@ -19,7 +19,7 @@
 package org.apache.hudi.table.action.compact;
 
 import org.apache.hudi.avro.model.HoodieCompactionPlan;
-import org.apache.hudi.client.table.manager.HoodieTableManagerClient;
+import org.apache.hudi.client.HoodieTableManagementClient;
 import org.apache.hudi.common.engine.EngineType;
 import org.apache.hudi.common.engine.HoodieEngineContext;
 import org.apache.hudi.common.model.ActionType;
@@ -132,8 +132,8 @@ public class ScheduleCompactionActionExecutor<T extends HoodieRecordPayload, I, 
       option = Option.of(plan);
     }
 
-    if (config.getTableManagerConfig().isTableManagerSupportsAction(ActionType.compaction)) {
-      delegateCompactionExecutionToTableManager();
+    if (config.getTableManagementConfig().isTableManagementSupportsAction(ActionType.compaction)) {
+      delegateCompactionExecutionToTableManagement();
     }
 
     return option;
@@ -247,8 +247,8 @@ public class ScheduleCompactionActionExecutor<T extends HoodieRecordPayload, I, 
     return timestamp;
   }
 
-  private void delegateCompactionExecutionToTableManager() {
-    HoodieTableManagerClient tableManagerClient = new HoodieTableManagerClient(table.getMetaClient(), config.getTableManagerConfig());
-    tableManagerClient.executeCompaction();
+  private void delegateCompactionExecutionToTableManagement() {
+    HoodieTableManagementClient TableManagementClient = new HoodieTableManagementClient(table.getMetaClient(), config.getTableManagementConfig());
+    TableManagementClient.executeCompaction();
   }
 }

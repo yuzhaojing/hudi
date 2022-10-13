@@ -881,7 +881,7 @@ public abstract class BaseHoodieWriteClient<T extends HoodieRecordPayload, I, K,
    * @return Collection of WriteStatus to inspect errors and counts
    */
   public HoodieWriteMetadata<O> cluster(String clusteringInstantTime) {
-    if (delegateToTableManagerService(config, ActionType.replacecommit)) {
+    if (useTableManagementService(config, ActionType.replacecommit)) {
       throw new HoodieException(ActionType.replacecommit.name() + " delegate to table management service!");
     }
     return cluster(clusteringInstantTime, true);
@@ -894,7 +894,7 @@ public abstract class BaseHoodieWriteClient<T extends HoodieRecordPayload, I, K,
    * @return Collection of WriteStatus to inspect errors and counts
    */
   public HoodieWriteMetadata<O> compact(String compactionInstantTime) {
-    if (delegateToTableManagerService(config, ActionType.compaction)) {
+    if (useTableManagementService(config, ActionType.compaction)) {
       throw new HoodieException(ActionType.compaction.name() + " delegate to table management service!");
     }
     return compact(compactionInstantTime, config.shouldAutoCommit());

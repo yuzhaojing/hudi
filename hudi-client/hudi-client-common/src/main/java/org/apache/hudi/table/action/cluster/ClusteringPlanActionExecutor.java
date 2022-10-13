@@ -20,7 +20,7 @@ package org.apache.hudi.table.action.cluster;
 
 import org.apache.hudi.avro.model.HoodieClusteringPlan;
 import org.apache.hudi.avro.model.HoodieRequestedReplaceMetadata;
-import org.apache.hudi.client.table.manager.HoodieTableManagerClient;
+import org.apache.hudi.client.HoodieTableManagementClient;
 import org.apache.hudi.common.engine.HoodieEngineContext;
 import org.apache.hudi.common.model.ActionType;
 import org.apache.hudi.common.model.HoodieRecordPayload;
@@ -108,15 +108,15 @@ public class ClusteringPlanActionExecutor<T extends HoodieRecordPayload, I, K, O
       }
     }
 
-    if (config.getTableManagerConfig().isTableManagerSupportsAction(ActionType.replacecommit)) {
-      delegateClusteringExecutionToTableManager();
+    if (config.getTableManagementConfig().isTableManagementSupportsAction(ActionType.replacecommit)) {
+      delegateClusteringExecutionToTableManagement();
     }
 
     return planOption;
   }
 
-  private void delegateClusteringExecutionToTableManager() {
-    HoodieTableManagerClient tableManagerClient = new HoodieTableManagerClient(table.getMetaClient(), config.getTableManagerConfig());
-    tableManagerClient.executeClustering();
+  private void delegateClusteringExecutionToTableManagement() {
+    HoodieTableManagementClient TableManagementClient = new HoodieTableManagementClient(table.getMetaClient(), config.getTableManagementConfig());
+    TableManagementClient.executeClustering();
   }
 }

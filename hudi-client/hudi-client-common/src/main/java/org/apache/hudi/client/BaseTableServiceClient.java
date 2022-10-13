@@ -52,28 +52,13 @@ import org.apache.log4j.Logger;
 import java.util.List;
 import java.util.Map;
 
-public abstract class BaseTableServiceClient<O> extends CommonHoodieClient {
+public abstract class BaseTableServiceClient<O> extends CommonHoodieClient
+    implements RunsTableService {
 
   private static final Logger LOG = LogManager.getLogger(BaseHoodieWriteClient.class);
 
   protected BaseTableServiceClient(HoodieEngineContext context, HoodieWriteConfig clientConfig, HoodieMetrics metrics) {
     super(context, clientConfig, Option.empty());
-  }
-
-  protected boolean tableServicesEnabled(HoodieWriteConfig config) {
-    boolean enabled = config.areTableServicesEnabled();
-    if (!enabled) {
-      LOG.warn(String.format("Table services are disabled. Set `%s` to enable.", HoodieWriteConfig.TABLE_SERVICES_ENABLED));
-    }
-    return enabled;
-  }
-
-  protected boolean delegateToTableManagerService(HoodieWriteConfig config, ActionType actionType) {
-    boolean supportsAction = config.getTableManagerConfig().isTableManagerSupportsAction(actionType);
-    if (supportsAction) {
-      LOG.warn(actionType.name() + " delegate to table manager service!");
-    }
-    return supportsAction;
   }
 
   /**
@@ -90,7 +75,7 @@ public abstract class BaseTableServiceClient<O> extends CommonHoodieClient {
   }
 
   private void inlineCompaction(HoodieTable table, Option<Map<String, String>> extraMetadata) {
-    if (delegateToTableManagerService(config, ActionType.compaction)) {
+    if (useTableManagementService(config, ActionType.compaction)) {
       scheduleCompaction(extraMetadata);
     } else {
       runAnyPendingCompactions(table);
@@ -345,33 +330,48 @@ public abstract class BaseTableServiceClient<O> extends CommonHoodieClient {
     if (!tableServicesEnabled(config)) {
       return Option.empty();
     }
+
+    Option<String> option = Option.empty();
+    HoodieTable<?, ?, ?, ?> table = createTable(config, hadoopConf);
+
     switch (tableServiceType) {
       case ARCHIVE:
         LOG.info("Scheduling archiving is not supported. Skipping.");
-        return Option.empty();
+        break;
       case CLUSTER:
         LOG.info("Scheduling clustering at instant time :" + instantTime);
-        Option<HoodieClusteringPlan> clusteringPlan = createTable(config, hadoopConf)
+        Option<HoodieClusteringPlan> clusteringPlan = table
             .scheduleClustering(context, instantTime, extraMetadata);
-        return clusteringPlan.isPresent() ? Option.of(instantTime) : Option.empty();
+        option = clusteringPlan.isPresent() ? Option.of(instantTime) : Option.empty();
+        break;
       case COMPACT:
         LOG.info("Scheduling compaction at instant time :" + instantTime);
-        Option<HoodieCompactionPlan> compactionPlan = createTable(config, hadoopConf)
+        Option<HoodieCompactionPlan> compactionPlan = table
             .scheduleCompaction(context, instantTime, extraMetadata);
-        return compactionPlan.isPresent() ? Option.of(instantTime) : Option.empty();
+        option = compactionPlan.isPresent() ? Option.of(instantTime) : Option.empty();
+        break;
       case LOG_COMPACT:
         LOG.info("Scheduling log compaction at instant time :" + instantTime);
-        Option<HoodieCompactionPlan> logCompactionPlan = createTable(config, hadoopConf)
+        Option<HoodieCompactionPlan> logCompactionPlan = table
             .scheduleLogCompaction(context, instantTime, extraMetadata);
-        return logCompactionPlan.isPresent() ? Option.of(instantTime) : Option.empty();
+        option = logCompactionPlan.isPresent() ? Option.of(instantTime) : Option.empty();
+        break;
       case CLEAN:
         LOG.info("Scheduling cleaning at instant time :" + instantTime);
-        Option<HoodieCleanerPlan> cleanerPlan = createTable(config, hadoopConf)
+        Option<HoodieCleanerPlan> cleanerPlan = table
             .scheduleCleaning(context, instantTime, extraMetadata);
-        return cleanerPlan.isPresent() ? Option.of(instantTime) : Option.empty();
+        option = cleanerPlan.isPresent() ? Option.of(instantTime) : Option.empty();
+        break;
       default:
         throw new IllegalArgumentException("Invalid TableService " + tableServiceType);
     }
+
+    Option<String> instantRange = delegateToTableManagementService(tableServiceType, table);
+    if (instantRange.isPresent()) {
+      LOG.info("Delegate instant [" + instantRange.get() + "] to table management service");
+    }
+
+    return option;
   }
 
   protected abstract HoodieTable<?, ?, ?, ?> createTable(HoodieWriteConfig config, Configuration hadoopConf);
@@ -390,7 +390,7 @@ public abstract class BaseTableServiceClient<O> extends CommonHoodieClient {
   }
 
   private void inlineClustering(HoodieTable table, Option<Map<String, String>> extraMetadata) {
-    if (delegateToTableManagerService(config, ActionType.replacecommit)) {
+    if (useTableManagementService(config, ActionType.replacecommit)) {
       scheduleClustering(extraMetadata);
     } else {
       runAnyPendingClustering(table);
@@ -484,7 +484,7 @@ public abstract class BaseTableServiceClient<O> extends CommonHoodieClient {
         table.getMetaClient().reloadActiveTimeline();
       }
 
-      if (delegateToTableManagerService(config, ActionType.clean)) {
+      if (useTableManagementService(config, ActionType.clean)) {
         return null;
       }
       metadata = table.clean(context, cleanInstantTime, skipLocking);
@@ -497,5 +497,23 @@ public abstract class BaseTableServiceClient<O> extends CommonHoodieClient {
       }
     }
     return metadata;
+  }
+
+  private Option<String> delegateToTableManagementService(TableServiceType tableServiceType, HoodieTable table) {
+    if (!config.getTableManagementConfig().isTableManagementSupportsAction(ActionType.compaction)) {
+      return Option.empty();
+    }
+    HoodieTableManagementClient tableManagementClient = new HoodieTableManagementClient(table.getMetaClient(), config.getTableManagementConfig());
+    switch (tableServiceType) {
+      case COMPACT:
+        return tableManagementClient.executeCompaction();
+      case CLUSTER:
+        return tableManagementClient.executeClustering();
+      case CLEAN:
+        return tableManagementClient.executeClean();
+      default:
+        LOG.info("Not supported delegate to table management service, tableServiceType : " + tableServiceType.getAction());
+        return Option.empty();
+    }
   }
 }
