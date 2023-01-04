@@ -28,15 +28,14 @@ import java.util.Date;
 @Getter
 public class AssistQueryEntity {
 
-  private int maxRetry = ServiceConfig.getInstance()
-      .getInt(ServiceConfig.ServiceConfVars.MaxRetryNum);
+  private int maxRetry;
 
   private Date queryStartTime = DateTimeUtils.addDay(-3);
 
   private int status;
 
-  public AssistQueryEntity() {
-
+  public AssistQueryEntity(int maxRetry) {
+    this.maxRetry = maxRetry;
   }
 
   public AssistQueryEntity(int status, Date queryStartTime) {

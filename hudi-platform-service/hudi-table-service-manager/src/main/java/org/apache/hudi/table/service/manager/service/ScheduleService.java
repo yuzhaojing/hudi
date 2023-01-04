@@ -40,22 +40,20 @@ public class ScheduleService implements BaseService {
   private static final Logger LOG = LogManager.getLogger(ScheduleService.class);
 
   private ScheduledExecutorService service;
-  private ExecutorService executionService;
-  private MetadataStore metadataStore;
-  private int compactionWaitInterval;
+  private final ExecutorService executionService;
+  private final MetadataStore metadataStore;
+  private final long scheduleIntervalMs;
 
   public ScheduleService(ExecutorService executionService,
                          MetadataStore metadataStore) {
     this.executionService = executionService;
     this.metadataStore = metadataStore;
-    this.compactionWaitInterval = ServiceConfig.getInstance()
-        .getInt(ServiceConfig.ServiceConfVars.CompactionScheduleWaitInterval);
+    this.scheduleIntervalMs = metadataStore.getTableServiceManagerConfig().getScheduleIntervalMs();
   }
 
   @Override
   public void init() {
-    LOG.info("Finish init schedule service, compactionWaitInterval: " + compactionWaitInterval);
-    //ThreadFactory factory = new ThreadFactoryBuilder().setNameFormat("Schedule-Service-%d").build();
+    LOG.info("Finish init schedule service, scheduleIntervalMs: " + scheduleIntervalMs);
     this.service = Executors.newSingleThreadScheduledExecutor();
   }
 
@@ -101,13 +99,13 @@ public class ScheduleService implements BaseService {
 
   private boolean waitSchedule(Instance instance) {
     return instance.getAction() == Action.COMPACTION.getValue()
-        && instance.getUpdateTime().getTime() + compactionWaitInterval
+        && instance.getUpdateTime().getTime() + scheduleIntervalMs
         > System.currentTimeMillis();
   }
 
   protected BaseActionExecutor getActionExecutor(Instance instance) {
     if (instance.getAction() == Action.COMPACTION.getValue()) {
-      return new CompactionExecutor(instance);
+      return new CompactionExecutor(instance, metadataStore.getTableServiceManagerConfig());
     } else {
       throw new HoodieTableServiceManagerException("Unsupported action " + instance.getAction());
     }

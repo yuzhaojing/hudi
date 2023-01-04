@@ -18,9 +18,9 @@
 
 package org.apache.hudi.table.service.manager.service;
 
-import org.apache.hudi.table.service.manager.common.ServiceConfig;
 import org.apache.hudi.table.service.manager.common.ServiceContext;
 import org.apache.hudi.table.service.manager.executor.BaseActionExecutor;
+import org.apache.hudi.table.service.manager.store.MetadataStore;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -40,16 +40,16 @@ public class ExecutorService implements BaseService {
   private ThreadPoolExecutor executorService;
   private ScheduledExecutorService service;
   private BlockingQueue<BaseActionExecutor> taskQueue;
-  private int coreExecuteSize;
-  private int maxExecuteSize;
+  private final MetadataStore metadataStore;
+
+  public ExecutorService(MetadataStore metadataStore) {
+    this.metadataStore = metadataStore;
+  }
 
   public void init() {
     service = Executors.newSingleThreadScheduledExecutor();
-    coreExecuteSize = ServiceConfig.getInstance()
-        .getInt(ServiceConfig.ServiceConfVars.CoreExecuteSize);
-    maxExecuteSize = ServiceConfig.getInstance()
-        .getInt(ServiceConfig.ServiceConfVars.MaxExecuteSize);
-    //ThreadFactory factory = new ThreadFactoryBuilder().setNameFormat("Executor-Service-%d").build();
+    int coreExecuteSize = metadataStore.getTableServiceManagerConfig().getScheduleCoreExecuteSize();
+    int maxExecuteSize = metadataStore.getTableServiceManagerConfig().getScheduleMaxExecuteSize();
     executorService = new ThreadPoolExecutor(coreExecuteSize, maxExecuteSize, 60,
         TimeUnit.SECONDS, new SynchronousQueue<>());
     taskQueue = new LinkedBlockingQueue<>();
@@ -97,7 +97,7 @@ public class ExecutorService implements BaseService {
   }
 
   public int getFreeSize() {
-    return maxExecuteSize - ServiceContext.getRunningInstanceNum();
+    return metadataStore.getTableServiceManagerConfig().getScheduleMaxExecuteSize() - ServiceContext.getRunningInstanceNum();
   }
 
 }

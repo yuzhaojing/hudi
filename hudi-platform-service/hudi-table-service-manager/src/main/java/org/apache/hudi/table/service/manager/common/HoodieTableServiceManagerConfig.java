@@ -39,12 +39,6 @@ public class HoodieTableServiceManagerConfig extends HoodieConfig {
       .sinceVersion("0.13.0")
       .withDocumentation("AWS session token");
 
-  public static final ConfigProperty<Integer> MAX_FAIL_TOLERANCE = ConfigProperty
-      .key("max.fail.tolerance")
-      .defaultValue(5)
-      .sinceVersion("0.13.0")
-      .withDocumentation("AWS secret key");
-
   public static final ConfigProperty<String> METADATA_STORE_CLASS = ConfigProperty
       .key("metadata.store.class")
       .defaultValue("org.apache.hudi.table.service.manager.store.impl.RelationDBBasedStore")
@@ -139,10 +133,6 @@ public class HoodieTableServiceManagerConfig extends HoodieConfig {
     return getInt(SCHEDULE_MAX_EXECUTE_SIZE);
   }
 
-  public int getMaxFailTolerance() {
-    return getInt(MAX_FAIL_TOLERANCE);
-  }
-
   public String getMetadataStoreClass() {
     return getString(METADATA_STORE_CLASS);
   }
@@ -227,11 +217,6 @@ public class HoodieTableServiceManagerConfig extends HoodieConfig {
 
     public HoodieTableServiceManagerConfig.Builder withScheduleMaxExecuteSize(int scheduleMaxExecuteSize) {
       tableServiceManagerConfig.setValue(SCHEDULE_MAX_EXECUTE_SIZE, String.valueOf(scheduleMaxExecuteSize));
-      return this;
-    }
-
-    public HoodieTableServiceManagerConfig.Builder withMaxFailTolerance(int maxFailTolerance) {
-      tableServiceManagerConfig.setValue(MAX_FAIL_TOLERANCE, String.valueOf(maxFailTolerance));
       return this;
     }
 

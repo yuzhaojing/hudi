@@ -20,6 +20,7 @@ package org.apache.hudi.table.service.manager.executor.submitter;
 
 import org.apache.hudi.cli.commands.SparkMain;
 import org.apache.hudi.common.util.StringUtils;
+import org.apache.hudi.table.service.manager.common.HoodieTableServiceManagerConfig;
 import org.apache.hudi.table.service.manager.common.ServiceConfig;
 import org.apache.hudi.table.service.manager.entity.Instance;
 import org.apache.hudi.table.service.manager.entity.InstanceStatus;
@@ -37,6 +38,7 @@ import java.net.URISyntaxException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 
 import static org.apache.spark.launcher.SparkAppHandle.State.FINISHED;
@@ -46,29 +48,27 @@ public class SparkEngine extends ExecutionEngine {
 
   private static final Logger LOG = LogManager.getLogger(SparkEngine.class);
 
-  public SparkEngine(InstanceService instanceDao) {
-    super(instanceDao);
+  public SparkEngine(InstanceService instanceDao, HoodieTableServiceManagerConfig config) {
+    super(instanceDao, config);
   }
 
   @Override
   public Map<String, String> getJobParams(Instance instance) {
     Map<String, String> sparkParams = new HashMap<>();
     String parallelism = StringUtils.isNullOrEmpty(instance.getParallelism())
-        ? ServiceConfig.getInstance().getString(ServiceConfig.ServiceConfVars.MaxExecutors)
+        ? String.valueOf(config.getSparkMaxExecutors())
         : instance.getParallelism();
+
     sparkParams.put("spark.dynamicAllocation.maxExecutors", parallelism);
-    sparkParams.put("spark.dynamicAllocation.minExecutors",
-        ServiceConfig.getInstance().getString(ServiceConfig.ServiceConfVars.MinExecutors));
-    sparkParams.put("spark.speculation",
-        ServiceConfig.getInstance().getString(ServiceConfig.ServiceConfVars.SparkSpeculation));
+    sparkParams.put("spark.dynamicAllocation.minExecutors", String.valueOf(config.getSparkMinExecutors()));
+    sparkParams.put("spark.speculation", "false");
     String driverResource;
     String executorResource;
     String resource = instance.getResource().trim();
+
     if (StringUtils.isNullOrEmpty(resource)) {
-      driverResource = ServiceConfig.getInstance()
-          .getString(ServiceConfig.ServiceConfVars.DriverMemory);
-      executorResource = ServiceConfig.getInstance()
-          .getString(ServiceConfig.ServiceConfVars.ExecutorMemory);
+      driverResource = config.getSparkDriverMemory();
+      executorResource = config.getSparkExecutorMemory();
     } else {
       String[] resourceArray = resource.split(":");
       if (resourceArray.length == 1) {
@@ -82,12 +82,11 @@ public class SparkEngine extends ExecutionEngine {
             "Invalid conf: " + instance.getIdentifier() + ", resource: " + resource);
       }
     }
-    sparkParams.put("spark.executor.cores",
-        ServiceConfig.getInstance().getString(ServiceConfig.ServiceConfVars.ExecutorCores));
+
+    sparkParams.put("spark.executor.cores", String.valueOf(config.getSparkExecutorCores()));
     sparkParams.put("spark.executor.memory", executorResource);
     sparkParams.put("spark.driver.memory", driverResource);
-    sparkParams.put("spark.executor.memoryOverhead", ServiceConfig.getInstance()
-        .getString(ServiceConfig.ServiceConfVars.ExecutorMemoryOverhead));
+    sparkParams.put("spark.executor.memoryOverhead", config.getSparkExecutorMemoryOverhead());
 
     return sparkParams;
   }
@@ -160,10 +159,12 @@ public class SparkEngine extends ExecutionEngine {
   }
 
   private SparkLauncher initLauncher(String propertiesFile, Instance instance) throws URISyntaxException {
-    String currentJar = SparkEngine.class.getProtectionDomain().getCodeSource().getLocation().getFile();
+    String currentJar = StringUtils.isNullOrEmpty(config.getSparkSubmitJarPath())
+        ? config.getSparkSubmitJarPath()
+        : SparkEngine.class.getProtectionDomain().getCodeSource().getLocation().getFile();
     System.out.println("currentJar = " + currentJar);
     Map<String, String> env = System.getenv();
-    String master = ServiceConfig.getInstance().getString(ServiceConfig.ServiceConfVars.SparkMaster);
+    String master = config.getSparkMaster();
 
     SparkLauncher sparkLauncher =
         new SparkLauncher(env)
@@ -179,7 +180,7 @@ public class SparkEngine extends ExecutionEngine {
     File libDirectory = new File(new File(currentJar).getParent(), "lib");
     // This lib directory may be not required, such as providing libraries through a bundle jar
     if (libDirectory.exists()) {
-      Arrays.stream(libDirectory.list()).forEach(library -> {
+      Arrays.stream(Objects.requireNonNull(libDirectory.list())).forEach(library -> {
         if (!library.startsWith("hadoop-hdfs")) {
           sparkLauncher.addJar(new File(libDirectory, library).getAbsolutePath());
         }
@@ -194,8 +195,8 @@ public class SparkEngine extends ExecutionEngine {
 
     sparkLauncher.addSparkArg("--queue", instance.getQueue());
     String sparkMemory = jobParams.get("spark.executor.memory");
-    String parallelism = ServiceConfig.getInstance().getString(ServiceConfig.ServiceConfVars.SparkParallelism);
-    String maxRetryNum = ServiceConfig.getInstance().getString(ServiceConfig.ServiceConfVars.MaxRetryNum);
+    String parallelism = String.valueOf(config.getSparkParallelism());
+    String maxRetryNum = String.valueOf(config.getInstanceMaxRetryNum());
 
     sparkLauncher.addAppArgs("COMPACT_RUN", master, sparkMemory, instance.getBasePath(),
         instance.getTableName(), instance.getInstant(), parallelism, "", maxRetryNum, "");

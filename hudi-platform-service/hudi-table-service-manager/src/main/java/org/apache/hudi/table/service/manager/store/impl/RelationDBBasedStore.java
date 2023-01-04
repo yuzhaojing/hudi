@@ -18,6 +18,7 @@
 
 package org.apache.hudi.table.service.manager.store.impl;
 
+import org.apache.hudi.table.service.manager.common.HoodieTableServiceManagerConfig;
 import org.apache.hudi.table.service.manager.common.ServiceContext;
 import org.apache.hudi.table.service.manager.entity.Instance;
 import org.apache.hudi.table.service.manager.store.MetadataStore;
@@ -27,9 +28,15 @@ import java.util.List;
 public class RelationDBBasedStore implements MetadataStore {
 
   private final InstanceService instanceDao;
+  private final HoodieTableServiceManagerConfig config;
 
-  public RelationDBBasedStore() {
+  public RelationDBBasedStore(HoodieTableServiceManagerConfig config) {
+    this.config = config;
     this.instanceDao = ServiceContext.getInstanceDao();
+  }
+
+  public HoodieTableServiceManagerConfig getTableServiceManagerConfig() {
+    return config;
   }
 
   @Override
@@ -59,6 +66,6 @@ public class RelationDBBasedStore implements MetadataStore {
 
   @Override
   public List<Instance> getRetryInstances() {
-    return instanceDao.getRetryInstances();
+    return instanceDao.getRetryInstances(config.getInstanceMaxRetryNum());
   }
 }

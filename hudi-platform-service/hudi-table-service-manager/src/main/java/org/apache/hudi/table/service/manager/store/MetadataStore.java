@@ -18,6 +18,7 @@
 
 package org.apache.hudi.table.service.manager.store;
 
+import org.apache.hudi.table.service.manager.common.HoodieTableServiceManagerConfig;
 import org.apache.hudi.table.service.manager.entity.Instance;
 
 import java.util.List;
@@ -35,4 +36,6 @@ public interface MetadataStore {
   List<Instance> getInstances(int status, int limit);
 
   List<Instance> getRetryInstances();
+
+  HoodieTableServiceManagerConfig getTableServiceManagerConfig();
 }

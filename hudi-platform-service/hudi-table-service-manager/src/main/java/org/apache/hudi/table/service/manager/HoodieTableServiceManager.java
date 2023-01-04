@@ -22,7 +22,6 @@ import org.apache.hudi.common.fs.FSUtils;
 import org.apache.hudi.common.util.ReflectionUtils;
 import org.apache.hudi.table.service.manager.common.CommandConfig;
 import org.apache.hudi.table.service.manager.common.HoodieTableServiceManagerConfig;
-import org.apache.hudi.table.service.manager.common.ServiceConfig;
 import org.apache.hudi.table.service.manager.service.BaseService;
 import org.apache.hudi.table.service.manager.service.CleanService;
 import org.apache.hudi.table.service.manager.service.ExecutorService;
@@ -45,8 +44,8 @@ import java.util.List;
 /**
  * Main class of hoodie table service manager.
  *
- * @since 0.13.0
  * @Experimental
+ * @since 0.13.0
  */
 public class HoodieTableServiceManager {
 
@@ -78,7 +77,8 @@ public class HoodieTableServiceManager {
 
   private MetadataStore initMetadataStore() {
     String metadataStoreClass = tableServiceManagerConfig.getMetadataStoreClass();
-    MetadataStore metadataStore = ReflectionUtils.loadClass(metadataStoreClass);
+    MetadataStore metadataStore = (MetadataStore) ReflectionUtils.loadClass(metadataStoreClass,
+        new Class<?>[] {HoodieTableServiceManagerConfig.class}, tableServiceManagerConfig);
     metadataStore.init();
     LOG.info("Finish init metastore: " + metadataStoreClass);
     return metadataStore;
@@ -86,7 +86,7 @@ public class HoodieTableServiceManager {
 
   private void registerService() {
     services = new ArrayList<>();
-    ExecutorService executorService = new ExecutorService();
+    ExecutorService executorService = new ExecutorService(metadataStore);
     services.add(executorService);
     services.add(new ScheduleService(executorService, metadataStore));
     services.add(new RetryService(metadataStore));

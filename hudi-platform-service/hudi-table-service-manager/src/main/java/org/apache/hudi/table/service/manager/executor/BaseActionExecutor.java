@@ -18,6 +18,7 @@
 
 package org.apache.hudi.table.service.manager.executor;
 
+import org.apache.hudi.table.service.manager.common.HoodieTableServiceManagerConfig;
 import org.apache.hudi.table.service.manager.common.ServiceConfig;
 import org.apache.hudi.table.service.manager.common.ServiceContext;
 import org.apache.hudi.table.service.manager.entity.Instance;
@@ -34,17 +35,16 @@ public abstract class BaseActionExecutor implements Runnable {
 
   protected InstanceService instanceDao;
   protected Instance instance;
-  protected int maxFailTolerance;
   protected ExecutionEngine engine;
+  protected HoodieTableServiceManagerConfig config;
 
-  public BaseActionExecutor(Instance instance) {
+  public BaseActionExecutor(Instance instance, HoodieTableServiceManagerConfig config) {
     this.instance = instance;
+    this.config = config;
     this.instanceDao = ServiceContext.getInstanceDao();
-    this.maxFailTolerance = ServiceConfig.getInstance()
-        .getInt(ServiceConfig.ServiceConfVars.MaxFailTolerance);
     switch (instance.getExecutionEngine()) {
       case SPARK:
-        engine = new SparkEngine(instanceDao);
+        engine = new SparkEngine(instanceDao, config);
         break;
       case FLINK:
       default:
@@ -59,8 +59,7 @@ public abstract class BaseActionExecutor implements Runnable {
       doExecute();
     } finally {
       ServiceContext.removeRunningInstance(instance.getRecordKey());
-      if (ServiceConfig.getInstance()
-          .getBool(ServiceConfig.ServiceConfVars.CompactionCacheEnable)) {
+      if (config.getInstanceCacheEnable()) {
         ServiceContext.removePendingInstant(instance.getRecordKey());
       }
     }

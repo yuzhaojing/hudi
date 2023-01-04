@@ -29,6 +29,6 @@
     </properties>
 
     <modules>
-        <module>hudi-table-management-service</module>
+        <module>hudi-table-service-manager</module>
     </modules>
 </project>

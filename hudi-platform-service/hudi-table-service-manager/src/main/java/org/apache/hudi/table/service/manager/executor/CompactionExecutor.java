@@ -18,6 +18,7 @@
 
 package org.apache.hudi.table.service.manager.executor;
 
+import org.apache.hudi.table.service.manager.common.HoodieTableServiceManagerConfig;
 import org.apache.hudi.table.service.manager.entity.Instance;
 import org.apache.hudi.table.service.manager.entity.InstanceStatus;
 
@@ -30,8 +31,8 @@ public class CompactionExecutor extends BaseActionExecutor {
 
   public static final String COMPACT_JOB_NAME = "Hoodie compact %s.%s %s";
 
-  public CompactionExecutor(Instance instance) {
-    super(instance);
+  public CompactionExecutor(Instance instance, HoodieTableServiceManagerConfig config) {
+    super(instance, config);
   }
 
   @Override

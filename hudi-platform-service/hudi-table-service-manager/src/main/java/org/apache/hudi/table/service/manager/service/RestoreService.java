@@ -51,8 +51,7 @@ public class RestoreService implements BaseService {
 
   public RestoreService(MetadataStore metadataStore) {
     this.metadataStore = metadataStore;
-    this.submitJobTimeoutSec = ServiceConfig.getInstance()
-        .getInt(ServiceConfig.ServiceConfVars.SubmitJobTimeoutSec);
+    this.submitJobTimeoutSec = metadataStore.getTableServiceManagerConfig().getInstanceSubmitTimeoutSec();
   }
 
   @Override

@@ -18,15 +18,12 @@
 
 package org.apache.hudi.table.service.manager.handlers;
 
-import org.apache.hudi.table.service.manager.common.ServiceConfig;
 import org.apache.hudi.table.service.manager.entity.Instance;
 import org.apache.hudi.table.service.manager.store.MetadataStore;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-
-import java.io.IOException;
 
 public class ActionHandler implements AutoCloseable {
   private static Logger LOG = LogManager.getLogger(ActionHandler.class);
@@ -40,7 +37,7 @@ public class ActionHandler implements AutoCloseable {
                        MetadataStore metadataStore) {
     this.conf = conf;
     this.metadataStore = metadataStore;
-    boolean cacheEnable = ServiceConfig.getInstance().getBool(ServiceConfig.ServiceConfVars.CompactionCacheEnable);
+    boolean cacheEnable = metadataStore.getTableServiceManagerConfig().getInstanceCacheEnable();
     this.compactionHandler = new CompactionHandler(cacheEnable);
   }
 
@@ -48,16 +45,8 @@ public class ActionHandler implements AutoCloseable {
     compactionHandler.scheduleCompaction(metadataStore, instance);
   }
 
-  public void removeCompaction(Instance instance) throws IOException {
-    compactionHandler.removeCompaction(metadataStore, instance);
-  }
-
   // TODO: support clustering
   public void scheduleClustering(Instance instance) {
-
-  }
-
-  public void removeClustering(Instance instance) {
 
   }
 

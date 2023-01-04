@@ -18,6 +18,7 @@
 
 package org.apache.hudi.table.service.manager.executor.submitter;
 
+import org.apache.hudi.table.service.manager.common.HoodieTableServiceManagerConfig;
 import org.apache.hudi.table.service.manager.entity.Instance;
 import org.apache.hudi.table.service.manager.exception.HoodieTableServiceManagerException;
 import org.apache.hudi.table.service.manager.store.impl.InstanceService;
@@ -32,9 +33,11 @@ public abstract class ExecutionEngine {
   private static final Logger LOG = LogManager.getLogger(ExecutionEngine.class);
 
   protected final InstanceService instanceDao;
+  protected final HoodieTableServiceManagerConfig config;
 
-  public ExecutionEngine(InstanceService instanceDao) {
+  public ExecutionEngine(InstanceService instanceDao, HoodieTableServiceManagerConfig config) {
     this.instanceDao = instanceDao;
+    this.config = config;
   }
 
   public void execute(String jobName, Instance instance) throws HoodieTableServiceManagerException {

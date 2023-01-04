@@ -33,9 +33,6 @@ public class CommandConfig {
   @Parameter(names = {"-schedule-max-executor-size"}, description = "Schedule Max Execute Size")
   public Integer scheduleMaxExecuteSize = 1000;
 
-  @Parameter(names = {"-max-fail-tolerance"}, description = "Max Fail Tolerance")
-  public Integer maxFailTolerance = 5;
-
   @Parameter(names = {"-metadata-store-class"}, description = "Metadata Store Class")
   public String metadataStoreClass = "org.apache.hudi.table.service.manager.store.impl.RelationDBBasedStore";
 
@@ -48,7 +45,7 @@ public class CommandConfig {
   @Parameter(names = {"-instance-submit-timeout-sec"}, description = "Instance Submit Timeout Sec")
   public Integer instanceSubmitTimeoutSec = 600;
 
-  @Parameter(names = {"-spark-submit-jar-path"}, description = "Spark Submit Jar Path", required = true)
+  @Parameter(names = {"-spark-submit-jar-path"}, description = "Spark Submit Jar Path")
   public String sparkSubmitJarPath;
 
   @Parameter(names = {"-spark-parallelism"}, description = "Spark Parallelism")
@@ -83,7 +80,6 @@ public class CommandConfig {
         .withScheduleIntervalMs(config.scheduleIntervalMs)
         .withScheduleCoreExecuteSize(config.scheduleCoreExecuteSize)
         .withScheduleMaxExecuteSize(config.scheduleMaxExecuteSize)
-        .withMaxFailTolerance(config.maxFailTolerance)
         .withMetadataStoreClass(config.metadataStoreClass)
         .withInstanceCacheEnable(config.instanceCacheEnable)
         .withInstanceMaxRetryNum(config.instanceMaxRetryNum)

@@ -130,10 +130,10 @@ public class InstanceService {
     }
   }
 
-  public List<Instance> getRetryInstances() {
+  public List<Instance> getRetryInstances(int maxRetry) {
     try {
       return jdbcMapper.getObjects(statement(NAMESPACE, "getRetryInstances"),
-          new AssistQueryEntity());
+          new AssistQueryEntity(maxRetry));
     } catch (Exception e) {
       LOG.error("Fail get retry instances, errMsg: ", e);
       throw new RuntimeException("Fail get retry instances");
