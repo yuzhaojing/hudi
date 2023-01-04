@@ -64,6 +64,7 @@
     <module>packaging/hudi-cli-bundle</module>
     <module>hudi-tests-common</module>
     <module>hudi-table-management-service</module>
+    <module>hudi-platform-service</module>
   </modules>
 
   <licenses>
